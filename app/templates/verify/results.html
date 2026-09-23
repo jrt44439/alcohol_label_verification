@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}Verification Results{% endblock %}
+{% block content %}
+  <h1>Verification Results</h1>
+  <p class="muted">Correct anything the app got wrong in either column below, then re-run the comparison. The
+    Government Health Warning's expected text is fixed and can't be edited.</p>
+
+  <form method="post" action="{{ url_for('verify.compare') }}" class="stacked-form">
+    <input type="hidden" name="item_count" value="{{ items|length }}">
+
+    {% for item in items %}
+      <fieldset class="verify-item">
+        <legend>Label {{ loop.index }}{% if item.product_name %} — {{ item.product_name }}{% elif stage == "review" %} — ad hoc entry{% endif %}</legend>
+
+        <input type="hidden" name="raw_text_{{ item.index }}" value="{{ item.raw_text }}">
+        <input type="hidden" name="image_filename_{{ item.index }}" value="{{ item.image_filename or '' }}">
+        <input type="hidden" name="product_name_{{ item.index }}" value="{{ item.product_name or '' }}">
+
+        {% if item.image_filename %}
+          <img class="label-thumb" src="{{ url_for('verify.image', filename=item.image_filename) }}" alt="Uploaded label {{ loop.index }}">
+        {% endif %}
+
+        <details class="raw-ocr" {{ "open" if stage == "review" else "" }}>
+          <summary>Raw OCR text (for manual cross-check)</summary>
+          <pre>{{ item.raw_text }}</pre>
+        </details>
+
+        {% for field in label_fields %}
+          {% set comp = item.comparisons_by_field[field] if item.comparisons_by_field else None %}
+          <div class="field-row {% if comp %}status-{{ comp.status.value }}{% endif %}">
+            <div class="field-row-header">
+              <strong>{{ field_display_names[field] }}</strong>
+              {% if comp %}
+                <span class="badge badge-{{ comp.status.value }}">
+                  {{ {"match": "MATCH", "mismatch": "MISMATCH", "not_found": "NOT FOUND"}[comp.status.value] }}
+                  {% if comp.score is not none %}({{ "%.0f"|format(comp.score) }}%){% endif %}
+                </span>
+              {% endif %}
+            </div>
+            <div class="field-row-body">
+              <label class="field-col">
+                Extracted from photo
+                {% if field in ["producer_info", "health_warning_text"] %}
+                  <textarea name="extracted_{{ field }}_{{ item.index }}" rows="3">{{ item.extracted[field] or "" }}</textarea>
+                {% else %}
+                  <input type="text" name="extracted_{{ field }}_{{ item.index }}" value="{{ item.extracted[field] or "" }}">
+                {% endif %}
+              </label>
+              <label class="field-col">
+                Expected
+                {% set warning_readonly = "readonly" if field == "health_warning_text" else "" %}
+                {% if field in ["producer_info", "health_warning_text"] %}
+                  <textarea name="expected_{{ field }}_{{ item.index }}" rows="3" {{ warning_readonly }}>{{ item.expected[field] or "" }}</textarea>
+                {% else %}
+                  <input type="text" name="expected_{{ field }}_{{ item.index }}" value="{{ item.expected[field] or "" }}" {{ warning_readonly }}>
+                {% endif %}
+              </label>
+            </div>
+          </div>
+        {% endfor %}
+      </fieldset>
+    {% endfor %}
+
+    <div class="form-actions">
+      <button type="submit" class="button">Re-run Comparison</button>
+      <a href="{{ url_for('verify.upload') }}">Start Over</a>
+    </div>
+  </form>
+{% endblock %}

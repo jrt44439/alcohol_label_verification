@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}{{ "Add Product" if is_new else "Edit Product" }}{% endblock %}
+{% block content %}
+  <h1>{{ "Add Product" if is_new else "Edit Product" }}</h1>
+
+  <form method="post" class="stacked-form" enctype="multipart/form-data"
+        action="{{ url_for('products.new_product') if is_new else url_for('products.edit_product', product_id=product_id) }}">
+
+    <fieldset>
+      <legend>Prefill from a reference document</legend>
+      <label>
+        PDF or Word document (e.g. a spec sheet or COLA application)
+        <input type="file" name="reference_document" accept=".pdf,.docx">
+      </label>
+      <p class="muted">Extracts brand, class/type, alcohol content, net contents, producer, and country of
+        origin from the document's text. Review the fields below and correct anything before saving.</p>
+      <button type="submit" name="action" value="extract" formnovalidate class="button button-secondary">Extract from Document</button>
+    </fieldset>
+
+    <label>
+      Product Name (for your own reference)
+      <input type="text" name="name" value="{{ product.name or '' }}" required>
+    </label>
+
+    <label>
+      Brand Name
+      <input type="text" name="brand_name" value="{{ product.brand_name or '' }}">
+    </label>
+
+    <label>
+      Class / Type
+      <input type="text" name="class_type" value="{{ product.class_type or '' }}" placeholder="e.g. Bourbon Whiskey">
+    </label>
+
+    <label>
+      Alcohol Content
+      <input type="text" name="alcohol_content" value="{{ product.alcohol_content or '' }}" placeholder="e.g. 45% ALC/VOL (90 PROOF)">
+    </label>
+
+    <label>
+      Net Contents
+      <input type="text" name="net_contents" value="{{ product.net_contents or '' }}" placeholder="e.g. 750 mL">
+    </label>
+
+    <label>
+      Producer / Bottler / Importer (name and address)
+      <textarea name="producer_info" rows="3">{{ product.producer_info or '' }}</textarea>
+    </label>
+
+    <label>
+      Country of Origin
+      <input type="text" name="country_of_origin" value="{{ product.country_of_origin or '' }}" placeholder="leave blank for domestic products">
+    </label>
+
+    <div class="static-field">
+      <span class="static-field-label">Government Health Warning</span>
+      <p class="muted">Fixed by federal law and always compared as-is; not stored per product.</p>
+      <p class="canonical-warning">{{ canonical_warning }}</p>
+    </div>
+
+    <div class="form-actions">
+      <button type="submit" name="action" value="save" class="button">Save</button>
+      <a href="{{ url_for('products.list_products') }}">Cancel</a>
+    </div>
+  </form>
+{% endblock %}

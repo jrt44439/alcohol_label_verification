@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Alcohol Label Verification{% endblock %}
+{% block content %}
+  <h1>Alcohol Label Verification</h1>
+  <p>Check a photographed bottle label against known-correct reference values for
+     brand name, class/type, alcohol content, net contents, producer, country of
+     origin, and the Government Health Warning.</p>
+
+  <div class="card-grid">
+    <a class="card" href="{{ url_for('products.list_products') }}">
+      <h2>Product Library</h2>
+      <p>View, add, or edit saved reference values for products you verify often.</p>
+    </a>
+    <a class="card" href="{{ url_for('verify.upload') }}">
+      <h2>Verify a Label</h2>
+      <p>Upload a photo of a label and compare it against a saved product or values you enter now.</p>
+    </a>
+  </div>
+{% endblock %}

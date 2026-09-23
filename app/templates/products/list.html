@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Product Library{% endblock %}
+{% block content %}
+  <div class="page-header">
+    <h1>Product Library</h1>
+    <a class="button" href="{{ url_for('products.new_product') }}">+ Add Product</a>
+  </div>
+
+  {% if products %}
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Brand</th>
+          <th>Class / Type</th>
+          <th>Alcohol Content</th>
+          <th>Net Contents</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in products %}
+          <tr>
+            <td>{{ p.name }}</td>
+            <td>{{ p.brand_name or "—" }}</td>
+            <td>{{ p.class_type or "—" }}</td>
+            <td>{{ p.alcohol_content or "—" }}</td>
+            <td>{{ p.net_contents or "—" }}</td>
+            <td class="row-actions">
+              <a href="{{ url_for('products.edit_product', product_id=p.id) }}">Edit</a>
+              <form method="post" action="{{ url_for('products.delete_product', product_id=p.id) }}"
+                    onsubmit="return confirm('Delete {{ p.name|e }}?');" class="inline-form">
+                <button type="submit" class="link-button">Delete</button>
+              </form>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p>No products saved yet. <a href="{{ url_for('products.new_product') }}">Add your first product</a>.</p>
+  {% endif %}
+{% endblock %}

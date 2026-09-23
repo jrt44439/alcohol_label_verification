@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}Verify Labels{% endblock %}
+{% block content %}
+  <h1>Verify Labels</h1>
+  <p>Upload one or more label photos. Each photo gets its own reference to compare against — pick a saved
+     product per photo, or enter values for that photo now.</p>
+
+  <form method="post" action="{{ url_for('verify.run') }}" enctype="multipart/form-data" class="stacked-form">
+    <label>
+      Label Photos
+      <input type="file" id="label-images" name="label_images" accept="image/*" multiple required>
+    </label>
+
+    <input type="hidden" name="item_count" id="item-count" value="0">
+    <div id="file-rows"></div>
+
+    <div class="form-actions">
+      <button type="submit" class="button">Upload &amp; Read Labels</button>
+    </div>
+  </form>
+
+  <script>
+    const PRODUCTS = {{ products_for_js|tojson }};
+
+    function escapeHtml(s) {
+      const div = document.createElement('div');
+      div.textContent = s;
+      return div.innerHTML;
+    }
+
+    function buildProductOptionsHtml() {
+      let html = '<option value="">— select a product —</option>';
+      PRODUCTS.forEach(function (p) {
+        html += '<option value="' + p.id + '">' + escapeHtml(p.name) + '</option>';
+      });
+      return html;
+    }
+
+    function toggleRowMode(i) {
+      const checked = document.querySelector('input[name="reference_mode_' + i + '"]:checked');
+      const mode = checked ? checked.value : 'product';
+      const select = document.getElementById('product-select-' + i);
+      const adhoc = document.getElementById('adhoc-fields-' + i);
+      const isAdhoc = mode === 'adhoc';
+      adhoc.style.display = isAdhoc ? 'block' : 'none';
+      select.disabled = isAdhoc;
+    }
+
+    function renderFileRows() {
+      const input = document.getElementById('label-images');
+      const container = document.getElementById('file-rows');
+      container.innerHTML = '';
+      const files = Array.from(input.files);
+      document.getElementById('item-count').value = files.length;
+
+      files.forEach(function (file, i) {
+        const row = document.createElement('fieldset');
+        row.className = 'file-row';
+
+        const noProducts = PRODUCTS.length === 0;
+        row.innerHTML =
+          '<legend>' + escapeHtml(file.name) + '</legend>' +
+          '<label class="radio-label">' +
+          '<input type="radio" name="reference_mode_' + i + '" value="product"' + (noProducts ? '' : ' checked') +
+          ' onchange="toggleRowMode(' + i + ')"> A saved product</label>' +
+          '<select name="product_id_' + i + '" id="product-select-' + i + '">' + buildProductOptionsHtml() + '</select>' +
+          '<label class="radio-label">' +
+          '<input type="radio" name="reference_mode_' + i + '" value="adhoc"' + (noProducts ? ' checked' : '') +
+          ' onchange="toggleRowMode(' + i + ')"> Enter values now</label>' +
+          '<div class="adhoc-fields" id="adhoc-fields-' + i + '" style="display:none">' +
+          '<label>Brand Name <input type="text" name="expected_brand_name_' + i + '"></label>' +
+          '<label>Class / Type <input type="text" name="expected_class_type_' + i + '"></label>' +
+          '<label>Alcohol Content <input type="text" name="expected_alcohol_content_' + i + '" placeholder="e.g. 45% ALC/VOL"></label>' +
+          '<label>Net Contents <input type="text" name="expected_net_contents_' + i + '" placeholder="e.g. 750 mL"></label>' +
+          '<label>Producer / Bottler / Importer <textarea name="expected_producer_info_' + i + '" rows="2"></textarea></label>' +
+          '<label>Country of Origin <input type="text" name="expected_country_of_origin_' + i + '"></label>' +
+          '</div>';
+
+        container.appendChild(row);
+        toggleRowMode(i);
+      });
+    }
+
+    document.getElementById('label-images').addEventListener('change', renderFileRows);
+  </script>
+{% endblock %}
