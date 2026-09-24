@@ -7,13 +7,12 @@ from app import db as db_module
 
 
 def create_app(test_config: dict | None = None) -> Flask:
-    app = Flask(__name__, instance_relative_config=True)
+    app = Flask(__name__)
     app.config.from_object("config.Config")
 
     if test_config:
         app.config.update(test_config)
 
-    os.makedirs(app.instance_path, exist_ok=True)
     os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
 
     db_module.init_app(app)

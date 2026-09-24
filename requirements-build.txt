@@ -1,0 +1,4 @@
+# Only needed to build the standalone Windows .exe (see README.md's
+# "Standalone Windows build" section) -- not required to run or develop the
+# app normally.
+pyinstaller>=6.0

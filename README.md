@@ -43,6 +43,69 @@ correct each extracted field before running the comparison.
    pytest
    ```
 
+## Standalone Windows build
+
+Packages the app into a double-clickable `.exe` (with a bundled copy of
+Tesseract) that opens itself in the default browser -- no separate Python
+or Tesseract install needed on the machine that runs it.
+
+1. Make sure your own dev setup above is working first (Tesseract
+   installed, `requirements.txt` installed into `.venv`).
+2. Install the build-only dependency:
+   ```
+   pip install -r requirements-build.txt
+   ```
+3. Stage a trimmed copy of your local Tesseract install (binary + DLLs +
+   the English trained-data file) into `packaging/tesseract/`:
+   ```
+   python packaging/stage_tesseract.py
+   ```
+   Re-run this after updating Tesseract, before rebuilding.
+4. Build:
+   ```
+   pyinstaller desktop_app.spec
+   ```
+   Output is a folder at `dist/AlcoholLabelVerification/` --
+   `AlcoholLabelVerification.exe` (using the icon at
+   `packaging/label_verifier.ico`) plus everything it needs alongside it.
+   A console window stays open while it runs -- closing it stops the app.
+5. Sign it:
+   ```
+   powershell -ExecutionPolicy Bypass -File packaging/sign_exe.ps1
+   ```
+   The first run generates a self-signed code-signing certificate (saved
+   under `packaging/codesign/`, gitignored -- machine-local, never checked
+   in) and reuses that same certificate on every later build, so each
+   release carries a consistent publisher identity. See the limitation
+   below before relying on this for distribution.
+   Zip the whole `dist/AlcoholLabelVerification/` folder to hand it to
+   someone else; double-clicking the `.exe` starts a local server and
+   opens the app in their default browser.
+
+Notes:
+- The database and any temporarily-uploaded photos live in
+  `%LOCALAPPDATA%\AlcoholLabelVerification\`, not inside the app folder
+  itself, so they persist across rebuilds/reinstalls and the bundle itself
+  can stay read-only.
+- `desktop_app.py` is the packaged entry point (runs on `waitress`, a
+  production WSGI server, and auto-opens the browser) -- it's separate
+  from `wsgi.py`, which is still what `flask run` uses for normal
+  development.
+- **Code-signing limitation:** the self-signed certificate `sign_exe.ps1`
+  generates proves the exe hasn't been altered since signing and gives it
+  a consistent identity across builds, but it does **not** stop Windows
+  SmartScreen's "Windows protected your PC" warning on a machine that
+  hasn't explicitly been told to trust this specific certificate --
+  self-signing can't do that for machines you don't control. On a
+  machine you *do* control, import `packaging/codesign/AlcoholLabelVerification.cer`
+  into its Trusted Root Certification Authorities store once, and the
+  warning stops appearing there. To avoid the warning everywhere,
+  including machines you've never touched, you need a certificate from a
+  recognized certificate authority (an OV or EV code-signing certificate,
+  e.g. from DigiCert, Sectigo, or SSL.com -- typically $70-400+/year and
+  requires identity verification); once you have that `.pfx`, swap it in
+  for the one `sign_exe.ps1` generates.
+
 ## Using the app
 
 1. Go to **Product Library** and add the reference values for a product you

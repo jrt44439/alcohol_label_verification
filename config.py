@@ -1,7 +1,28 @@
 """Application configuration and shared constants."""
 import os
+import sys
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
+
+
+def _default_data_dir() -> str:
+    """Where the database and uploaded-photo temp files live by default.
+
+    In a normal dev/source checkout this is just BASE_DIR (unchanged
+    behavior). In a frozen (PyInstaller) standalone build, BASE_DIR points
+    inside the bundled resources -- which can be read-only, and in a
+    onefile build is a temp directory wiped after the app closes -- so
+    persistent data instead goes in a proper per-user app-data directory
+    that survives between runs."""
+    if getattr(sys, "frozen", False):
+        root = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
+        data_dir = os.path.join(root, "AlcoholLabelVerification")
+        os.makedirs(data_dir, exist_ok=True)
+        return data_dir
+    return BASE_DIR
+
+
+DATA_DIR = _default_data_dir()
 
 # The federally mandated Government Health Warning statement (27 CFR 16.21).
 CANONICAL_WARNING = (
@@ -93,8 +114,8 @@ PRODUCER_KEYWORDS = [
 
 class Config:
     SECRET_KEY = os.environ.get("SECRET_KEY", "dev-only-insecure-key")
-    DATABASE = os.environ.get("DATABASE", os.path.join(BASE_DIR, "instance", "app.sqlite3"))
-    UPLOAD_FOLDER = os.environ.get("UPLOAD_FOLDER", os.path.join(BASE_DIR, "uploads"))
+    DATABASE = os.environ.get("DATABASE", os.path.join(DATA_DIR, "instance", "app.sqlite3"))
+    UPLOAD_FOLDER = os.environ.get("UPLOAD_FOLDER", os.path.join(DATA_DIR, "uploads"))
     MAX_CONTENT_LENGTH = 60 * 1024 * 1024  # 60 MB max upload (batch of several label photos)
     TESSERACT_CMD = os.environ.get("TESSERACT_CMD")  # e.g. C:\Program Files\Tesseract-OCR\tesseract.exe
 
