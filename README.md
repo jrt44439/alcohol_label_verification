@@ -106,6 +106,55 @@ Notes:
   requires identity verification); once you have that `.pfx`, swap it in
   for the one `sign_exe.ps1` generates.
 
+## Server deployment (Docker)
+
+A `Dockerfile` packages the app as a normal, always-running server process
+(installing Tesseract OCR via `apt` -- no cloud OCR API involved) for a
+host that supports it, rather than a serverless one. `server.py` is the
+container's entry point: it serves the app on all interfaces via
+`waitress` and reads `PORT` from the environment. This setup hasn't been
+build-tested locally (no Docker available in the environment that wrote
+it) -- both platforms below build it remotely, so watch the first
+deploy's build log for any apt/pip error and adjust the `Dockerfile`
+accordingly if one shows up.
+
+The database and any uploaded-photo temp files need to live on a
+**persistent volume/disk** mounted at `/data` (both configs below set this
+up) -- without one, they're wiped on every redeploy, since a container's
+own filesystem doesn't persist.
+
+### Fly.io (recommended -- persistent volumes are straightforward and cheap)
+
+```
+flyctl auth login          # opens a browser to sign in / create an account
+flyctl launch --no-deploy  # picks up fly.toml; choose a unique app name if prompted
+flyctl volumes create data --region iad --size 1
+flyctl deploy
+```
+
+`fly.toml` is already set up with a `[mounts]` section pointing at that
+volume, and `auto_stop_machines`/`min_machines_running = 0` so it doesn't
+cost anything while idle (at the cost of a few seconds' cold start on the
+next request -- set `min_machines_running = 1` if you'd rather avoid
+that).
+
+### Render (alternative -- note the free-tier caveat)
+
+Connect the GitHub repo on [render.com](https://render.com) and it picks
+up `render.yaml` automatically (or `New +` -> `Blueprint`). **Render's
+free tier has no persistent disk** -- `render.yaml` requests one, which
+requires at least the "starter" paid plan; on free tier, the product
+library and saved COLA results would be wiped on every redeploy.
+
+### Either way
+
+- Uploaded label photos are still never sent anywhere outside the
+  container itself -- Tesseract runs locally inside it, same as the
+  desktop/dev versions.
+- `MAX_CONTENT_LENGTH` (60 MB, see `config.py`) caps upload size; both
+  platforms' own request-size limits may be smaller by default depending
+  on plan.
+
 ## Using the app
 
 1. Go to **Product Library** and add the reference values for a product you

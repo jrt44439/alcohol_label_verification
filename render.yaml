@@ -1,0 +1,21 @@
+# Render Blueprint (https://render.com/docs/blueprint-spec). Render sets
+# its own PORT env var for Docker-runtime services at deploy time --
+# server.py already reads it (falling back to 8080), so nothing needs to
+# be configured here for that.
+#
+# IMPORTANT: the persistent disk below (for the SQLite database and
+# uploaded-photo temp files) requires a paid instance plan -- Render's
+# free tier has no persistent disk, so the product library and saved COLA
+# results would be wiped on every deploy/restart there. Bump `plan` to at
+# least "starter" if you want data to actually persist.
+services:
+  - type: web
+    name: alcohol-label-verification
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: starter
+    healthCheckPath: /
+    disk:
+      name: data
+      mountPath: /data
+      sizeGB: 1

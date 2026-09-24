@@ -1,0 +1,33 @@
+# Fly.io app config. "alcohol-label-verification" below has to be globally
+# unique across all of Fly -- `fly launch` will prompt you to pick a
+# different one if it's taken (or just edit it here first).
+app = "alcohol-label-verification"
+primary_region = "iad"
+
+[build]
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = true
+  auto_start_machines = true
+  # 0 = the machine can fully stop when idle (cheapest; adds a few
+  # seconds' cold-start latency to the next request). Set to 1 if you'd
+  # rather keep it always running (costs more, no cold start).
+  min_machines_running = 0
+
+# Persistent volume for the SQLite database and uploaded-photo temp files
+# (see Dockerfile's DATABASE/UPLOAD_FOLDER) -- survives redeploys, unlike
+# the container's own filesystem. Create it once before the first deploy:
+#   fly volumes create data --region iad --size 1
+[mounts]
+  source = "data"
+  destination = "/data"
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  # OCR + image preprocessing on a batch of photos can use a fair amount
+  # of memory -- bump this if you see out-of-memory errors on larger
+  # batches.
+  memory_mb = 512

@@ -1,0 +1,18 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.git/
+.gitignore
+
+instance/
+uploads/*
+!uploads/.gitkeep
+*.sqlite3
+
+# Standalone Windows build outputs -- irrelevant to (and far too large
+# for) the container image.
+build/
+dist/
+packaging/tesseract/
+packaging/codesign/
