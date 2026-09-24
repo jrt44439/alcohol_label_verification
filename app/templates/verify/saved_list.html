@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Saved Results{% endblock %}
+{% block content %}
+  <div class="page-header">
+    <h1>Saved Results</h1>
+    <a class="button" href="{{ url_for('verify.upload') }}">Verify More</a>
+  </div>
+  <p class="muted">COLA applications checked with the batch upload option. Only the extracted values, match
+    status, and raw OCR text are kept — no photos.</p>
+
+  {% if verifications %}
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Source Document</th>
+          <th>Brand</th>
+          <th>Status</th>
+          <th>Saved</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for v in verifications %}
+          <tr>
+            <td><a href="{{ url_for('verify.view_saved_result', verification_id=v.id) }}">{{ v.source_filename }}</a></td>
+            <td>{{ v.brand_name or "—" }}</td>
+            <td>
+              {% if v.overall_status == "pass" %}
+                <span class="badge badge-match">PASS</span>
+              {% else %}
+                <span class="badge badge-mismatch">NEEDS REVIEW</span>
+              {% endif %}
+            </td>
+            <td>{{ v.created_at }}</td>
+            <td class="row-actions">
+              <a href="{{ url_for('verify.view_saved_result', verification_id=v.id) }}">View</a>
+              <form method="post" action="{{ url_for('verify.delete_saved_result', verification_id=v.id) }}"
+                    onsubmit="return confirm('Delete this saved result?');" class="inline-form">
+                <button type="submit" class="link-button">Delete</button>
+              </form>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p>No saved results yet. Upload a batch of COLA applications from
+      <a href="{{ url_for('verify.upload') }}">Verify a Label</a> to save some.</p>
+  {% endif %}
+{% endblock %}

@@ -52,28 +52,62 @@ correct each extracted field before running the comparison.
    the fields — review and correct before saving. The Government Health
    Warning is not stored per product: it's federally standardized wording, so
    every verification always checks against the one fixed, correct text.
-2. Go to **Verify Labels** and select one or more label photos. For each
-   photo, choose either a saved product or enter expected values for that
-   photo now — a batch can mix different products in one upload.
-3. Review the fields extracted from each photo (shown alongside its raw OCR
-   text) and correct anything the app got wrong.
-4. Run the comparison to see a per-field MATCH / MISMATCH / NOT FOUND result
-   for every photo in the batch.
+2. Go to **Verify Labels** and select one or more label photos. By default
+   each photo is automatically matched against your product library — or
+   switch the batch to compare against a single uploaded **COLA application**
+   (PDF/Word) instead, extracting its stated fields once and checking every
+   photo in the batch against them (any label photos already embedded in the
+   document are pulled out automatically). You can also override auto-match
+   per photo to pick a specific saved product or type values in ad hoc.
+3. The comparison runs immediately. Photos sharing the same reference (e.g.
+   front + back photos of one product) are grouped into a single summary
+   table — one row per field, showing whether it was found correctly
+   *somewhere* in that set of photos, who found it, and what was expected.
+   Below the table, each photo has its own collapsed card with the raw OCR
+   text and editable fields; expand one to correct a misread field and
+   re-run the comparison, which updates the summary table too.
+4. From an expanded card you can also **Update Matched Product** (overwrite
+   that saved product with the corrected values) or **Save as New Product**
+   (add these values as a new library entry) — useful for COLA-sourced or
+   unmatched results too.
+5. To check and keep a record of several COLA applications at once, pick
+   **"A batch of COLA applications"** on the Verify Labels page. Each
+   document is processed independently and the result is **saved
+   automatically** — no review step first. Photos themselves are never
+   saved, only the extracted values, match status, and raw OCR text. Review
+   everything afterward (and correct any misread field, which persists) from
+   **Saved Results**.
 
 ## Notes
 
-- No verification history is saved — only the product library persists.
-  Uploaded images are written temporarily to `uploads/` to display alongside
-  results; that folder is gitignored and can be cleared manually.
+- Only the product library and saved COLA batch results persist. A live
+  (non-batch) verify run is otherwise ephemeral — nothing about it is kept
+  once you navigate away, other than what you explicitly save via Update/Save
+  Product. Uploaded images are written temporarily to `uploads/` to display
+  alongside a live run's results; that folder is gitignored and can be
+  cleared manually. Saved batch results never write any image to disk.
 - Brand name extraction relies on a best-effort heuristic (the largest text
   block on the label) and is the field most likely to need manual correction.
-- Reference document extraction only reads text directly embedded in the PDF
-  or Word file; a scanned/photographed document with no extractable text
-  layer isn't supported — enter fields manually in that case.
-- OCR image preprocessing (upscaling, contrast enhancement, adaptive
-  thresholding) and Tesseract's page-segmentation mode are tuned for a
-  typical single-column bottle label with mixed font sizes. If a particular
-  label layout still reads poorly, try setting the `TESSERACT_CONFIG`
-  environment variable to a different mode, e.g. `--oem 3 --psm 11` (sparse
-  text, for labels with text scattered in unrelated blocks) or `--oem 3
-  --psm 6` (a single uniform block of text).
+- Reference document extraction (product library or COLA application) only
+  reads text directly embedded in the PDF or Word file; a scanned/photographed
+  document with no extractable text layer isn't supported — enter fields
+  manually in that case.
+- Alcohol content and net contents are always required to be *on the label
+  photo itself* — even if a reference source (a COLA application, or a saved
+  product) doesn't state them, a photo missing either is flagged NOT FOUND.
+  Country of origin stays conditional (blank reference + blank label is fine,
+  since it's only required for imports).
+- The Government Warning is checked three ways: its text against the fixed
+  27 CFR 16.21 wording, whether the "GOVERNMENT WARNING" heading is in all
+  capital letters, and (best-effort, image-based) whether that heading is
+  bold — the bold check can misfire on noisy or angled photos, so treat it as
+  a hint to verify visually rather than a certainty.
+- OCR image preprocessing (upscaling, denoising, contrast enhancement) hands
+  Tesseract a clean grayscale image rather than a hard black/white threshold —
+  deliberately, since pre-binarizing tends to fuse or fragment letters more
+  than it helps. Tesseract's page-segmentation mode is tuned for a typical
+  single-column bottle label with mixed font sizes. If a particular label
+  layout still reads poorly, try setting the `TESSERACT_CONFIG` environment
+  variable to a different mode, e.g. `--oem 3 --psm 11` (sparse text, for
+  labels with text scattered in unrelated blocks) or `--oem 3 --psm 6` (a
+  single uniform block of text).

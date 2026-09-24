@@ -8,6 +8,8 @@
   --mismatch-bg: #fdecea;
   --not-found: #97650a;
   --not-found-bg: #fdf3e0;
+  --disagreement: #7c3aed;
+  --disagreement-bg: #f1e9fe;
 }
 
 * { box-sizing: border-box; }
@@ -158,6 +160,41 @@ fieldset {
   gap: 1rem;
 }
 
+.processing-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(255, 255, 255, 0.9);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.processing-box {
+  text-align: center;
+  padding: 2rem;
+}
+
+.processing-box .spinner {
+  width: 40px;
+  height: 40px;
+  margin: 0 auto 1rem;
+  border: 4px solid var(--border);
+  border-top-color: #1a1a1a;
+  border-radius: 50%;
+  animation: processing-spin 0.8s linear infinite;
+}
+
+.processing-box p {
+  font-size: 1.05rem;
+  color: #1a1a1a;
+  margin: 0;
+}
+
+@keyframes processing-spin {
+  to { transform: rotate(360deg); }
+}
+
 .flashes { list-style: none; padding: 0; }
 .flash {
   padding: 0.6rem 1rem;
@@ -222,10 +259,28 @@ fieldset {
 .badge-match { background: var(--match-bg); color: var(--match); }
 .badge-mismatch { background: var(--mismatch-bg); color: var(--mismatch); }
 .badge-not_found { background: var(--not-found-bg); color: var(--not-found); }
+.badge-disagreement { background: var(--disagreement-bg); color: var(--disagreement); }
 
 .field-row.status-match { border-color: var(--match); }
 .field-row.status-mismatch { border-color: var(--mismatch); }
 .field-row.status-not_found { border-color: var(--not-found); }
+
+.warning-format-status {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-top: 0.5rem;
+}
+
+.format-badge {
+  font-size: 0.75rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+}
+
+.format-ok { background: var(--match-bg); color: var(--match); }
+.format-bad { background: var(--mismatch-bg); color: var(--mismatch); }
+.format-unknown { background: var(--bg-muted); color: var(--text-muted); }
 
 @media (max-width: 600px) {
   .field-row-body { grid-template-columns: 1fr; }
@@ -259,9 +314,73 @@ fieldset {
 
 .verify-item {
   margin-bottom: 1.5rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+.verify-item-summary {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  cursor: pointer;
+  list-style: none;
+}
+
+.verify-item-summary::-webkit-details-marker { display: none; }
+
+.verify-item-summary::before {
+  content: "▸";
+  color: var(--text-muted);
+}
+
+.verify-item[open] > .verify-item-summary::before {
+  content: "▾";
+}
+
+.verify-item-title {
+  font-weight: 700;
+}
+
+.label-thumb-sm {
+  width: 48px;
+  height: 48px;
+  object-fit: cover;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+}
+
+.verify-item-body {
+  margin-top: 1rem;
   display: flex;
   flex-direction: column;
   gap: 1rem;
+}
+
+.match-banner {
+  font-weight: 600;
+  padding: 0.15rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.9rem;
+}
+
+.match-exact { background: var(--match-bg); color: var(--match); }
+.match-partial { background: var(--not-found-bg); color: var(--not-found); }
+.match-none { background: var(--bg-muted); color: var(--text-muted); }
+
+.save-actions {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  border-top: 1px solid var(--border);
+  padding-top: 1rem;
+}
+
+.save-name-field {
+  font-weight: normal;
+  flex: 1;
+  min-width: 200px;
 }
 
 .file-row {
@@ -279,4 +398,40 @@ fieldset {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
+}
+
+.result-group {
+  margin-bottom: 2.5rem;
+}
+
+.result-group-title {
+  margin-bottom: 0.75rem;
+}
+
+.summary-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 1rem;
+}
+
+.summary-table th, .summary-table td {
+  text-align: left;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+
+.summary-table th {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.summary-row.status-match td:first-child { border-left: 3px solid var(--match); }
+.summary-row.status-mismatch td:first-child { border-left: 3px solid var(--mismatch); }
+.summary-row.status-not_found td:first-child { border-left: 3px solid var(--not-found); }
+.summary-row.status-disagreement td:first-child { border-left: 3px solid var(--disagreement); }
+
+@media (max-width: 600px) {
+  .summary-table { display: block; overflow-x: auto; white-space: nowrap; }
 }

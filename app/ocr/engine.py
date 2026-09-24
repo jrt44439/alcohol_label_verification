@@ -16,6 +16,7 @@ class WordBox:
     height: int
     block_num: int
     line_num: int
+    par_num: int = 1
 
 
 @dataclass
@@ -64,6 +65,7 @@ def run_ocr(image: np.ndarray, min_confidence: int = 30, config: str = "") -> Oc
                 height=data["height"][i],
                 block_num=data["block_num"][i],
                 line_num=data["line_num"][i],
+                par_num=data["par_num"][i],
             )
         )
 

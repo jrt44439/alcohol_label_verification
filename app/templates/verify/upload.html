@@ -2,25 +2,79 @@
 {% block title %}Verify Labels{% endblock %}
 {% block content %}
   <h1>Verify Labels</h1>
-  <p>Upload one or more label photos. Each photo gets its own reference to compare against — pick a saved
-     product per photo, or enter values for that photo now.</p>
+  <p>Upload one or more label photos. By default each photo is automatically matched against your saved
+     product library — you can override that per photo to pick a specific product or enter values now instead.
+     Or, compare the whole batch against a single uploaded COLA application, which also automatically pulls
+     out any label photos already attached to it. To check and <strong>save</strong> several COLA applications
+     at once, use the batch option below — <a href="{{ url_for('verify.list_saved_results') }}">view saved results</a>.</p>
 
-  <form method="post" action="{{ url_for('verify.run') }}" enctype="multipart/form-data" class="stacked-form">
-    <label>
-      Label Photos
-      <input type="file" id="label-images" name="label_images" accept="image/*" multiple required>
-    </label>
+  <form method="post" action="{{ url_for('verify.run') }}" id="verify-form" enctype="multipart/form-data" class="stacked-form">
+    <fieldset>
+      <legend>Compare this batch against</legend>
+      <label class="radio-label">
+        <input type="radio" name="batch_reference_mode" value="auto" checked onchange="toggleBatchMode()">
+        Auto-match each photo to your product library
+      </label>
+      <label class="radio-label">
+        <input type="radio" name="batch_reference_mode" value="cola" onchange="toggleBatchMode()">
+        One COLA application (covers every photo in this batch)
+      </label>
+      <label class="radio-label">
+        <input type="radio" name="batch_reference_mode" value="cola-batch" onchange="toggleBatchMode()">
+        A batch of COLA applications (results saved automatically, no photos kept)
+      </label>
 
-    <input type="hidden" name="item_count" id="item-count" value="0">
-    <div id="file-rows"></div>
+      <div id="cola-document-field" style="display:none">
+        <label>
+          COLA Application (PDF or Word)
+          <input type="file" name="cola_document" accept=".pdf,.docx">
+        </label>
+        <p class="muted">Extracts brand, class/type, alcohol content, net contents, producer, and country of
+          origin from the application's text, and compares them against every photo in this batch. The
+          Government Warning is always checked against the fixed 27 CFR 16 text regardless. Any label photos
+          already embedded in the application (e.g. attached exhibits) are pulled out and checked
+          automatically — you only need to upload photos below for ones that aren't already in the document.</p>
+      </div>
+
+      <div id="cola-batch-documents-field" style="display:none">
+        <label>
+          COLA Applications (PDF or Word, select multiple)
+          <input type="file" name="cola_documents" accept=".pdf,.docx" multiple>
+        </label>
+        <p class="muted">Each document is processed independently: its own text fields plus whatever label
+          photos are embedded in it. Results are saved automatically as soon as they're processed — no review
+          step first — and can be reviewed and corrected afterward from
+          <a href="{{ url_for('verify.list_saved_results') }}">Saved Results</a>. The photos themselves are
+          never saved, only the extracted values, match status, and raw OCR text.</p>
+      </div>
+    </fieldset>
+
+    <div id="label-photos-field">
+      <label>
+        Label Photos <span id="label-photos-optional-hint" class="muted" style="display:none">(optional — see COLA application above)</span>
+        <input type="file" id="label-images" name="label_images" accept="image/*" multiple required>
+      </label>
+
+      <input type="hidden" name="item_count" id="item-count" value="0">
+      <div id="file-rows"></div>
+    </div>
 
     <div class="form-actions">
-      <button type="submit" class="button">Upload &amp; Read Labels</button>
+      <button type="submit" class="button" id="submit-button">Upload &amp; Read Labels</button>
     </div>
   </form>
 
+  <div id="processing-overlay" class="processing-overlay" style="display:none">
+    <div class="processing-box">
+      <div class="spinner"></div>
+      <p id="processing-message">Processing&hellip;</p>
+    </div>
+  </div>
+
   <script>
     const PRODUCTS = {{ products_for_js|tojson }};
+    const RUN_URL = "{{ url_for('verify.run') }}";
+    const RUN_COLA_BATCH_URL = "{{ url_for('verify.run_cola_batch') }}";
 
     function escapeHtml(s) {
       const div = document.createElement('div');
@@ -36,36 +90,81 @@
       return html;
     }
 
+    function getBatchMode() {
+      const checked = document.querySelector('input[name="batch_reference_mode"]:checked');
+      return checked ? checked.value : 'auto';
+    }
+
+    function toggleBatchMode() {
+      const mode = getBatchMode();
+      const isCola = mode === 'cola';
+      const isColaBatch = mode === 'cola-batch';
+
+      document.getElementById('cola-document-field').style.display = isCola ? 'block' : 'none';
+      document.getElementById('cola-batch-documents-field').style.display = isColaBatch ? 'block' : 'none';
+      document.getElementById('label-photos-field').style.display = isColaBatch ? 'none' : 'block';
+
+      const labelImages = document.getElementById('label-images');
+      labelImages.required = !isCola && !isColaBatch;
+      document.getElementById('label-photos-optional-hint').style.display = isCola ? 'inline' : 'none';
+
+      const form = document.getElementById('verify-form');
+      const submitButton = document.getElementById('submit-button');
+      if (isColaBatch) {
+        form.action = RUN_COLA_BATCH_URL;
+        submitButton.textContent = 'Upload & Save Results';
+      } else {
+        form.action = RUN_URL;
+        submitButton.textContent = 'Upload & Read Labels';
+      }
+
+      renderFileRows();
+    }
+
     function toggleRowMode(i) {
       const checked = document.querySelector('input[name="reference_mode_' + i + '"]:checked');
-      const mode = checked ? checked.value : 'product';
+      const mode = checked ? checked.value : 'auto';
       const select = document.getElementById('product-select-' + i);
       const adhoc = document.getElementById('adhoc-fields-' + i);
-      const isAdhoc = mode === 'adhoc';
-      adhoc.style.display = isAdhoc ? 'block' : 'none';
-      select.disabled = isAdhoc;
+      select.style.display = mode === 'product' ? 'block' : 'none';
+      select.disabled = mode !== 'product';
+      adhoc.style.display = mode === 'adhoc' ? 'block' : 'none';
     }
 
     function renderFileRows() {
       const input = document.getElementById('label-images');
       const container = document.getElementById('file-rows');
       container.innerHTML = '';
+      if (getBatchMode() === 'cola-batch') {
+        document.getElementById('item-count').value = 0;
+        return;
+      }
       const files = Array.from(input.files);
       document.getElementById('item-count').value = files.length;
+      const batchMode = getBatchMode();
 
       files.forEach(function (file, i) {
         const row = document.createElement('fieldset');
         row.className = 'file-row';
 
-        const noProducts = PRODUCTS.length === 0;
+        if (batchMode === 'cola') {
+          row.innerHTML = '<legend>' + escapeHtml(file.name) + '</legend>' +
+            '<p class="muted">Will be compared against the COLA application above.</p>';
+          container.appendChild(row);
+          return;
+        }
+
         row.innerHTML =
           '<legend>' + escapeHtml(file.name) + '</legend>' +
           '<label class="radio-label">' +
-          '<input type="radio" name="reference_mode_' + i + '" value="product"' + (noProducts ? '' : ' checked') +
-          ' onchange="toggleRowMode(' + i + ')"> A saved product</label>' +
-          '<select name="product_id_' + i + '" id="product-select-' + i + '">' + buildProductOptionsHtml() + '</select>' +
+          '<input type="radio" name="reference_mode_' + i + '" value="auto" checked' +
+          ' onchange="toggleRowMode(' + i + ')"> Auto-match to a saved product</label>' +
           '<label class="radio-label">' +
-          '<input type="radio" name="reference_mode_' + i + '" value="adhoc"' + (noProducts ? ' checked' : '') +
+          '<input type="radio" name="reference_mode_' + i + '" value="product"' +
+          ' onchange="toggleRowMode(' + i + ')"> A specific saved product</label>' +
+          '<select name="product_id_' + i + '" id="product-select-' + i + '" style="display:none">' + buildProductOptionsHtml() + '</select>' +
+          '<label class="radio-label">' +
+          '<input type="radio" name="reference_mode_' + i + '" value="adhoc"' +
           ' onchange="toggleRowMode(' + i + ')"> Enter values now</label>' +
           '<div class="adhoc-fields" id="adhoc-fields-' + i + '" style="display:none">' +
           '<label>Brand Name <input type="text" name="expected_brand_name_' + i + '"></label>' +
@@ -82,5 +181,40 @@
     }
 
     document.getElementById('label-images').addEventListener('change', renderFileRows);
+
+    function showProcessingOverlay() {
+      const mode = getBatchMode();
+      let count = 0;
+      let noun = 'file';
+
+      if (mode === 'cola-batch') {
+        const docsInput = document.querySelector('input[name="cola_documents"]');
+        count = docsInput ? docsInput.files.length : 0;
+        noun = 'COLA application';
+      } else if (mode === 'cola') {
+        const docInput = document.querySelector('input[name="cola_document"]');
+        const imagesInput = document.getElementById('label-images');
+        const docCount = docInput && docInput.files.length ? 1 : 0;
+        const photoCount = imagesInput ? imagesInput.files.length : 0;
+        count = docCount + photoCount;
+        noun = 'file';
+      } else {
+        const imagesInput = document.getElementById('label-images');
+        count = imagesInput ? imagesInput.files.length : 0;
+        noun = 'photo';
+      }
+
+      if (count === 0) {
+        return;
+      }
+
+      const message = 'Processing ' + count + ' ' + noun + (count === 1 ? '' : 's') +
+        '… this may take a minute.';
+      document.getElementById('processing-message').textContent = message;
+      document.getElementById('processing-overlay').style.display = 'flex';
+      document.getElementById('submit-button').disabled = true;
+    }
+
+    document.getElementById('verify-form').addEventListener('submit', showProcessingOverlay);
   </script>
 {% endblock %}

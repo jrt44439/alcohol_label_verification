@@ -2,63 +2,173 @@
 {% block title %}Verification Results{% endblock %}
 {% block content %}
   <h1>Verification Results</h1>
-  <p class="muted">Correct anything the app got wrong in either column below, then re-run the comparison. The
-    Government Health Warning's expected text is fixed and can't be edited.</p>
+  <p class="muted">Each product's photos are checked together below — a field only needs to be found correctly on
+    one of them. Expand a photo's card to correct a misread field, re-run the comparison, update the matched
+    product, or save these values as a new product. The Government Health Warning's expected text is fixed and
+    can't be edited.</p>
 
   <form method="post" action="{{ url_for('verify.compare') }}" class="stacked-form">
-    <input type="hidden" name="item_count" value="{{ items|length }}">
+    <input type="hidden" name="item_count" value="{{ item_count }}">
 
-    {% for item in items %}
-      <fieldset class="verify-item">
-        <legend>Label {{ loop.index }}{% if item.product_name %} — {{ item.product_name }}{% elif stage == "review" %} — ad hoc entry{% endif %}</legend>
+    {% for group in groups %}
+      <section class="result-group">
+        <h2 class="result-group-title">{{ group.label }}</h2>
 
-        <input type="hidden" name="raw_text_{{ item.index }}" value="{{ item.raw_text }}">
-        <input type="hidden" name="image_filename_{{ item.index }}" value="{{ item.image_filename or '' }}">
-        <input type="hidden" name="product_name_{{ item.index }}" value="{{ item.product_name or '' }}">
-
-        {% if item.image_filename %}
-          <img class="label-thumb" src="{{ url_for('verify.image', filename=item.image_filename) }}" alt="Uploaded label {{ loop.index }}">
-        {% endif %}
-
-        <details class="raw-ocr" {{ "open" if stage == "review" else "" }}>
-          <summary>Raw OCR text (for manual cross-check)</summary>
-          <pre>{{ item.raw_text }}</pre>
-        </details>
-
-        {% for field in label_fields %}
-          {% set comp = item.comparisons_by_field[field] if item.comparisons_by_field else None %}
-          <div class="field-row {% if comp %}status-{{ comp.status.value }}{% endif %}">
-            <div class="field-row-header">
-              <strong>{{ field_display_names[field] }}</strong>
-              {% if comp %}
-                <span class="badge badge-{{ comp.status.value }}">
-                  {{ {"match": "MATCH", "mismatch": "MISMATCH", "not_found": "NOT FOUND"}[comp.status.value] }}
-                  {% if comp.score is not none %}({{ "%.0f"|format(comp.score) }}%){% endif %}
+        <table class="summary-table">
+          <thead>
+            <tr>
+              <th>Field</th>
+              <th>Status</th>
+              <th>{{ "Product Label" if group.label == "COLA Application" else "Found" }}</th>
+              <th>On</th>
+              <th>{{ "Application" if group.label == "COLA Application" else "Expected" }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for field in label_fields %}
+              {% set agg = group.field_summary[field] %}
+              <tr class="summary-row status-{{ agg.status }}">
+                <td>{{ field_display_names[field] }}</td>
+                <td>
+                  <span class="badge badge-{{ agg.status }}">
+                    {{ {"match": "MATCH", "mismatch": "MISMATCH", "not_found": "NOT FOUND", "disagreement": "DISAGREEMENT"}[agg.status] }}
+                  </span>
+                </td>
+                <td>
+                  {% if agg.status == "disagreement" %}
+                    {% for v in agg["values"] %}<div>{{ v.value }}</div>{% endfor %}
+                  {% elif agg.status == "not_found" %}
+                    —
+                  {% else %}
+                    {{ agg.value or "—" }}
+                  {% endif %}
+                </td>
+                <td>
+                  {% if agg.status == "disagreement" %}
+                    {% for v in agg["values"] %}<div>Label {{ v.source_index + 1 }}</div>{% endfor %}
+                  {% elif agg.status == "not_found" %}
+                    —
+                  {% else %}
+                    Label {{ agg.source_index + 1 }}
+                  {% endif %}
+                </td>
+                <td>{{ agg.expected or "—" }}</td>
+              </tr>
+            {% endfor %}
+            <tr class="summary-row">
+              <td>Warning Heading Format</td>
+              <td colspan="4">
+                <span class="format-badge {% if group.warning_caps_ok is none %}format-unknown{% elif group.warning_caps_ok %}format-ok{% else %}format-bad{% endif %}">
+                  ALL CAPS: {% if group.warning_caps_ok is none %}unknown{% elif group.warning_caps_ok %}✓{% else %}✗{% endif %}
                 </span>
+                <span class="format-badge {% if group.warning_bold_ok is none %}format-unknown{% elif group.warning_bold_ok %}format-ok{% else %}format-bad{% endif %}">
+                  Bold: {% if group.warning_bold_ok is none %}unknown{% elif group.warning_bold_ok %}✓{% else %}✗{% endif %}
+                  (auto-detected, verify visually)
+                </span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+
+        {% for item in group.photos %}
+          <details class="verify-item">
+            <summary class="verify-item-summary">
+              {% if item.image_filename %}
+                <img class="label-thumb-sm" src="{{ url_for('verify.image', filename=item.image_filename) }}" alt="Uploaded label {{ item.index + 1 }}">
               {% endif %}
-            </div>
-            <div class="field-row-body">
-              <label class="field-col">
-                Extracted from photo
-                {% if field in ["producer_info", "health_warning_text"] %}
-                  <textarea name="extracted_{{ field }}_{{ item.index }}" rows="3">{{ item.extracted[field] or "" }}</textarea>
-                {% else %}
-                  <input type="text" name="extracted_{{ field }}_{{ item.index }}" value="{{ item.extracted[field] or "" }}">
+              <span class="verify-item-title">Label {{ item.index + 1 }}</span>
+              {% if item.match_kind == "exact" %}
+                <span class="match-banner match-exact">✓ Exact match: {{ item.product_name }}</span>
+              {% elif item.match_kind == "partial" %}
+                <span class="match-banner match-partial">~ Closest match: {{ item.product_name }} ({{ item.matched_count }}/{{ reference_field_count }} fields)</span>
+              {% elif item.match_kind == "none" %}
+                <span class="match-banner match-none">No matching product found</span>
+              {% elif item.reference_mode == "cola" %}
+                <span class="match-banner match-none">Compared against uploaded COLA application</span>
+              {% else %}
+                <span class="match-banner match-none">Ad hoc entry</span>
+              {% endif %}
+            </summary>
+
+            <div class="verify-item-body">
+              <input type="hidden" name="raw_text_{{ item.index }}" value="{{ item.raw_text }}">
+              <input type="hidden" name="image_filename_{{ item.index }}" value="{{ item.image_filename or '' }}">
+              <input type="hidden" name="product_name_{{ item.index }}" value="{{ item.product_name or '' }}">
+              <input type="hidden" name="reference_mode_{{ item.index }}" value="{{ item.reference_mode }}">
+              <input type="hidden" id="matched_product_id_{{ item.index }}" name="matched_product_id_{{ item.index }}" value="{{ item.matched_product_id or '' }}">
+              <input type="hidden" name="warning_caps_ok_{{ item.index }}" value="{% if item.warning_caps_ok is none %}{% elif item.warning_caps_ok %}true{% else %}false{% endif %}">
+              <input type="hidden" name="warning_bold_ok_{{ item.index }}" value="{% if item.warning_bold_ok is none %}{% elif item.warning_bold_ok %}true{% else %}false{% endif %}">
+
+              {% if item.image_filename %}
+                <img class="label-thumb" src="{{ url_for('verify.image', filename=item.image_filename) }}" alt="Uploaded label {{ item.index + 1 }}">
+              {% endif %}
+
+              <details class="raw-ocr">
+                <summary>Raw OCR text (for manual cross-check)</summary>
+                <pre>{{ item.raw_text }}</pre>
+              </details>
+
+              {% for field in label_fields %}
+                {% set comp = item.comparisons_by_field[field] if item.comparisons_by_field else None %}
+                <div class="field-row {% if comp %}status-{{ comp.status.value }}{% endif %}">
+                  <div class="field-row-header">
+                    <strong>{{ field_display_names[field] }}</strong>
+                    {% if comp %}
+                      <span class="badge badge-{{ comp.status.value }}">
+                        {{ {"match": "MATCH", "mismatch": "MISMATCH", "not_found": "NOT FOUND"}[comp.status.value] }}
+                        {% if comp.score is not none %}({{ "%.0f"|format(comp.score) }}%){% endif %}
+                      </span>
+                    {% endif %}
+                  </div>
+                  <div class="field-row-body">
+                    <label class="field-col">
+                      Extracted from photo
+                      {% if field in ["producer_info", "health_warning_text"] %}
+                        <textarea id="extracted_{{ field }}_{{ item.index }}" name="extracted_{{ field }}_{{ item.index }}" rows="3">{{ item.extracted[field] or "" }}</textarea>
+                      {% else %}
+                        <input type="text" id="extracted_{{ field }}_{{ item.index }}" name="extracted_{{ field }}_{{ item.index }}" value="{{ item.extracted[field] or "" }}">
+                      {% endif %}
+                    </label>
+                    <label class="field-col">
+                      Expected
+                      {% set warning_readonly = "readonly" if field == "health_warning_text" else "" %}
+                      {% if field in ["producer_info", "health_warning_text"] %}
+                        <textarea id="expected_{{ field }}_{{ item.index }}" name="expected_{{ field }}_{{ item.index }}" rows="3" {{ warning_readonly }}>{{ item.expected[field] or "" }}</textarea>
+                      {% else %}
+                        <input type="text" id="expected_{{ field }}_{{ item.index }}" name="expected_{{ field }}_{{ item.index }}" value="{{ item.expected[field] or "" }}" {{ warning_readonly }}>
+                      {% endif %}
+                    </label>
+                  </div>
+                  {% if field == "health_warning_text" %}
+                    <div class="warning-format-status">
+                      <span class="format-badge {% if item.warning_caps_ok is none %}format-unknown{% elif item.warning_caps_ok %}format-ok{% else %}format-bad{% endif %}">
+                        Heading ALL CAPS:
+                        {% if item.warning_caps_ok is none %}unknown{% elif item.warning_caps_ok %}✓{% else %}✗{% endif %}
+                      </span>
+                      <span class="format-badge {% if item.warning_bold_ok is none %}format-unknown{% elif item.warning_bold_ok %}format-ok{% else %}format-bad{% endif %}">
+                        Heading Bold:
+                        {% if item.warning_bold_ok is none %}unknown{% elif item.warning_bold_ok %}✓{% else %}✗{% endif %}
+                        (auto-detected, verify visually)
+                      </span>
+                    </div>
+                  {% endif %}
+                </div>
+              {% endfor %}
+
+              <div class="save-actions">
+                {% if item.matched_product_id %}
+                  <button type="button" class="button button-secondary" onclick="saveProduct({{ item.index }}, 'update')">Update Matched Product</button>
                 {% endif %}
-              </label>
-              <label class="field-col">
-                Expected
-                {% set warning_readonly = "readonly" if field == "health_warning_text" else "" %}
-                {% if field in ["producer_info", "health_warning_text"] %}
-                  <textarea name="expected_{{ field }}_{{ item.index }}" rows="3" {{ warning_readonly }}>{{ item.expected[field] or "" }}</textarea>
-                {% else %}
-                  <input type="text" name="expected_{{ field }}_{{ item.index }}" value="{{ item.expected[field] or "" }}" {{ warning_readonly }}>
-                {% endif %}
-              </label>
+                <label class="save-name-field">
+                  Name for new product
+                  <input type="text" id="new-product-name-{{ item.index }}" value="{{ item.product_name or item.extracted.brand_name or '' }}">
+                </label>
+                <button type="button" class="button button-secondary" onclick="saveProduct({{ item.index }}, 'create')">Save as New Product</button>
+              </div>
             </div>
-          </div>
+          </details>
         {% endfor %}
-      </fieldset>
+      </section>
     {% endfor %}
 
     <div class="form-actions">
@@ -66,4 +176,41 @@
       <a href="{{ url_for('verify.upload') }}">Start Over</a>
     </div>
   </form>
+
+  <script>
+    const SAVE_PRODUCT_URL = "{{ url_for('verify.save_product') }}";
+    const REFERENCE_FIELDS = ["brand_name", "class_type", "alcohol_content", "net_contents", "producer_info", "country_of_origin"];
+
+    function saveProduct(index, action) {
+      const form = document.createElement('form');
+      form.method = 'post';
+      form.action = SAVE_PRODUCT_URL;
+      form.style.display = 'none';
+
+      function addField(name, value) {
+        const input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = name;
+        input.value = value;
+        form.appendChild(input);
+      }
+
+      addField('action', action);
+      REFERENCE_FIELDS.forEach(function (field) {
+        const el = document.getElementById('expected_' + field + '_' + index);
+        addField(field, el ? el.value : '');
+      });
+
+      if (action === 'update') {
+        const productIdEl = document.getElementById('matched_product_id_' + index);
+        addField('product_id', productIdEl ? productIdEl.value : '');
+      } else {
+        const nameEl = document.getElementById('new-product-name-' + index);
+        addField('name', nameEl ? nameEl.value : '');
+      }
+
+      document.body.appendChild(form);
+      form.submit();
+    }
+  </script>
 {% endblock %}

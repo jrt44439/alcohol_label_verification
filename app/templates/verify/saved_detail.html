@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+{% block title %}Saved Verification{% endblock %}
+{% block content %}
+  <div class="page-header">
+    <h1>{{ verification.source_filename }}</h1>
+    <a href="{{ url_for('verify.list_saved_results') }}">&larr; Saved Results</a>
+  </div>
+  <p class="muted">Saved {{ verification.created_at }}{% if verification.updated_at != verification.created_at %}, last corrected {{ verification.updated_at }}{% endif %}.
+    No photos are stored — only the extracted values, match status, and raw OCR text from when this was checked.</p>
+
+  <table class="summary-table">
+    <thead>
+      <tr>
+        <th>Field</th>
+        <th>Status</th>
+        <th>Product Label</th>
+        <th>On</th>
+        <th>Application</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for field in label_fields %}
+        {% set agg = verification.field_summary[field] %}
+        <tr class="summary-row status-{{ agg.status }}">
+          <td>{{ field_display_names[field] }}</td>
+          <td>
+            <span class="badge badge-{{ agg.status }}">
+              {{ {"match": "MATCH", "mismatch": "MISMATCH", "not_found": "NOT FOUND", "disagreement": "DISAGREEMENT"}[agg.status] }}
+            </span>
+          </td>
+          <td>
+            {% if agg.status == "disagreement" %}
+              {% for v in agg["values"] %}<div>{{ v.value }}</div>{% endfor %}
+            {% elif agg.status == "not_found" %}
+              —
+            {% else %}
+              {{ agg.value or "—" }}
+            {% endif %}
+          </td>
+          <td>
+            {% if agg.status == "disagreement" %}
+              {% for v in agg["values"] %}<div>Photo {{ v.source_index + 1 }}</div>{% endfor %}
+            {% elif agg.status == "not_found" %}
+              —
+            {% else %}
+              Photo {{ agg.source_index + 1 }}
+            {% endif %}
+          </td>
+          <td>{{ agg.expected or "—" }}</td>
+        </tr>
+      {% endfor %}
+      <tr class="summary-row">
+        <td>Warning Heading Format</td>
+        <td colspan="4">
+          <span class="format-badge {% if verification.warning_caps_ok is none %}format-unknown{% elif verification.warning_caps_ok %}format-ok{% else %}format-bad{% endif %}">
+            ALL CAPS: {% if verification.warning_caps_ok is none %}unknown{% elif verification.warning_caps_ok %}✓{% else %}✗{% endif %}
+          </span>
+          <span class="format-badge {% if verification.warning_bold_ok is none %}format-unknown{% elif verification.warning_bold_ok %}format-ok{% else %}format-bad{% endif %}">
+            Bold: {% if verification.warning_bold_ok is none %}unknown{% elif verification.warning_bold_ok %}✓{% else %}✗{% endif %}
+            (auto-detected, verify visually)
+          </span>
+        </td>
+      </tr>
+    </tbody>
+  </table>
+
+  {% if verification.photos %}
+    <form method="post" action="{{ url_for('verify.update_saved_result', verification_id=verification.id) }}" class="stacked-form">
+      {% for photo in verification.photos %}
+        <details class="verify-item">
+          <summary class="verify-item-summary">
+            <span class="verify-item-title">Photo {{ photo.index + 1 }}</span>
+          </summary>
+
+          <div class="verify-item-body">
+            <input type="hidden" name="raw_text_{{ photo.index }}" value="{{ photo.raw_text }}">
+            <input type="hidden" name="warning_caps_ok_{{ photo.index }}" value="{% if photo.warning_caps_ok is none %}{% elif photo.warning_caps_ok %}true{% else %}false{% endif %}">
+            <input type="hidden" name="warning_bold_ok_{{ photo.index }}" value="{% if photo.warning_bold_ok is none %}{% elif photo.warning_bold_ok %}true{% else %}false{% endif %}">
+
+            <details class="raw-ocr">
+              <summary>Raw OCR text (for manual cross-check)</summary>
+              <pre>{{ photo.raw_text }}</pre>
+            </details>
+
+            {% for field in label_fields %}
+              {% set comp = photo.comparisons_by_field[field] if photo.comparisons_by_field else None %}
+              <div class="field-row {% if comp %}status-{{ comp.status }}{% endif %}">
+                <div class="field-row-header">
+                  <strong>{{ field_display_names[field] }}</strong>
+                  {% if comp %}
+                    <span class="badge badge-{{ comp.status }}">
+                      {{ {"match": "MATCH", "mismatch": "MISMATCH", "not_found": "NOT FOUND"}[comp.status] }}
+                      {% if comp.score is not none %}({{ "%.0f"|format(comp.score) }}%){% endif %}
+                    </span>
+                  {% endif %}
+                </div>
+                <div class="field-row-body">
+                  <label class="field-col">
+                    Extracted from photo
+                    {% if field in ["producer_info", "health_warning_text"] %}
+                      <textarea name="extracted_{{ field }}_{{ photo.index }}" rows="3">{{ photo.extracted[field] or "" }}</textarea>
+                    {% else %}
+                      <input type="text" name="extracted_{{ field }}_{{ photo.index }}" value="{{ photo.extracted[field] or "" }}">
+                    {% endif %}
+                  </label>
+                  <label class="field-col">
+                    Expected
+                    {% set warning_readonly = "readonly" if field == "health_warning_text" else "" %}
+                    {% if field in ["producer_info", "health_warning_text"] %}
+                      <textarea name="expected_{{ field }}_{{ photo.index }}" rows="3" {{ warning_readonly }}>{{ photo.expected[field] or "" }}</textarea>
+                    {% else %}
+                      <input type="text" name="expected_{{ field }}_{{ photo.index }}" value="{{ photo.expected[field] or "" }}" {{ warning_readonly }}>
+                    {% endif %}
+                  </label>
+                </div>
+              </div>
+            {% endfor %}
+          </div>
+        </details>
+      {% endfor %}
+
+      <div class="form-actions">
+        <button type="submit" class="button">Save Corrections</button>
+      </div>
+    </form>
+  {% else %}
+    <p class="muted">This COLA application had no embedded label photos to check.</p>
+  {% endif %}
+{% endblock %}

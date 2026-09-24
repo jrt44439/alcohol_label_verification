@@ -11,13 +11,77 @@ CANONICAL_WARNING = (
     "operate machinery, and may cause health problems."
 )
 
-# Alcohol class/type keywords used by the class/type extractor.
+# Alcohol class/type keywords used by the class/type extractor. Longer/more
+# specific phrases are tried first (see extract_class_type's sort by length),
+# so e.g. "kentucky straight bourbon" wins over a bare "bourbon" match when
+# both are present.
 CLASS_TYPE_KEYWORDS = [
+    # Base spirit categories.
     "bourbon", "scotch", "whiskey", "whisky", "rye", "vodka", "gin", "rum",
     "tequila", "mezcal", "brandy", "cognac", "liqueur", "cordial", "wine",
     "champagne", "sparkling wine", "cider", "beer", "ale", "lager", "stout",
     "porter", "malt beverage", "vermouth", "sake",
+    "red wine", "white wine", "rosé wine", "rose wine", "blush wine",
+    "dessert wine", "fortified wine", "table wine",
+    # More specific spirits designations.
+    "kentucky straight bourbon", "straight bourbon", "straight rye",
+    "tennessee whiskey", "single malt scotch", "blended whiskey",
+    "irish whiskey", "canadian whisky", "london dry gin", "silver tequila",
+    "blanco tequila", "reposado tequila", "reposado", "añejo tequila",
+    "anejo tequila", "añejo", "anejo", "spiced rum", "white rum", "dark rum",
+    "armagnac",
+    # Common wine grape varietals -- these function as the class/type
+    # designation on a varietal wine label per 27 CFR Part 4.
+    "cabernet sauvignon", "cabernet franc", "sauvignon blanc",
+    "pinot grigio", "pinot gris", "pinot noir", "chenin blanc",
+    "chardonnay", "merlot", "riesling", "zinfandel", "malbec", "syrah",
+    "shiraz", "moscato", "viognier", "grenache", "tempranillo",
+    "sangiovese", "nebbiolo",
 ]
+
+# Maps each specific class/type keyword above (plus the 3 broad category
+# names themselves) to its broad TTB product category -- "Wine",
+# "Distilled Spirits", or "Malt Beverage" -- an application's Type of
+# Product checkbox usually only records the broad category, so a specific
+# label designation like "Bourbon Whiskey" or "Chardonnay" needs to be
+# compared against it broadly rather than as an exact/fuzzy text match.
+CLASS_TYPE_BROAD_CATEGORY = {
+    # Distilled spirits.
+    "bourbon": "distilled spirits", "scotch": "distilled spirits",
+    "whiskey": "distilled spirits", "whisky": "distilled spirits",
+    "rye": "distilled spirits", "vodka": "distilled spirits",
+    "gin": "distilled spirits", "rum": "distilled spirits",
+    "tequila": "distilled spirits", "mezcal": "distilled spirits",
+    "brandy": "distilled spirits", "cognac": "distilled spirits",
+    "liqueur": "distilled spirits", "cordial": "distilled spirits",
+    "armagnac": "distilled spirits",
+    "kentucky straight bourbon": "distilled spirits", "straight bourbon": "distilled spirits",
+    "straight rye": "distilled spirits", "tennessee whiskey": "distilled spirits",
+    "single malt scotch": "distilled spirits", "blended whiskey": "distilled spirits",
+    "irish whiskey": "distilled spirits", "canadian whisky": "distilled spirits",
+    "london dry gin": "distilled spirits", "silver tequila": "distilled spirits",
+    "blanco tequila": "distilled spirits", "reposado tequila": "distilled spirits",
+    "reposado": "distilled spirits", "añejo tequila": "distilled spirits",
+    "anejo tequila": "distilled spirits", "añejo": "distilled spirits",
+    "anejo": "distilled spirits", "spiced rum": "distilled spirits",
+    "white rum": "distilled spirits", "dark rum": "distilled spirits",
+    "distilled spirits": "distilled spirits",
+    # Wine (including TTB-regulated cider, vermouth, and sake).
+    "wine": "wine", "champagne": "wine", "sparkling wine": "wine",
+    "cider": "wine", "vermouth": "wine", "sake": "wine",
+    "red wine": "wine", "white wine": "wine", "rosé wine": "wine",
+    "rose wine": "wine", "blush wine": "wine", "dessert wine": "wine",
+    "fortified wine": "wine", "table wine": "wine",
+    "cabernet sauvignon": "wine", "cabernet franc": "wine", "sauvignon blanc": "wine",
+    "pinot grigio": "wine", "pinot gris": "wine", "pinot noir": "wine",
+    "chenin blanc": "wine", "chardonnay": "wine", "merlot": "wine",
+    "riesling": "wine", "zinfandel": "wine", "malbec": "wine", "syrah": "wine",
+    "shiraz": "wine", "moscato": "wine", "viognier": "wine", "grenache": "wine",
+    "tempranillo": "wine", "sangiovese": "wine", "nebbiolo": "wine",
+    # Malt beverages.
+    "beer": "malt beverage", "ale": "malt beverage", "lager": "malt beverage",
+    "stout": "malt beverage", "porter": "malt beverage", "malt beverage": "malt beverage",
+}
 
 # Keywords that anchor the producer/bottler/importer line.
 PRODUCER_KEYWORDS = [
