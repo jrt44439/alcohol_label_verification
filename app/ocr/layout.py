@@ -48,18 +48,25 @@ def cluster_lines(
     max_lines: int = 6,
     height_ratio: float = 0.6,
     max_gap_ratio: float = 1.8,
+    direction: int = 1,
 ) -> list[LineKey]:
-    """Starting at ``start_key``, walk forward through the page's lines in
-    top-to-bottom (then left-to-right) order, including a line only while
-    it's "close together with a similar font" to what's been gathered so
-    far:
+    """Starting at ``start_key``, walk through the page's lines in
+    top-to-bottom (then left-to-right) order -- forward (``direction=1``,
+    the default) or backward (``direction=-1``) -- including a line only
+    while it's "close together with a similar font" to the line most
+    recently added to the cluster:
 
-    - its average word height is within ``height_ratio`` of the start
-      line's height (similar font size -- not a smaller/larger unrelated
-      block of text), and
-    - the vertical gap between it and the previous included line's bottom
-      edge is small relative to text height (physically close together --
-      not separated by a large blank gap that suggests unrelated content).
+    - its average word height is within ``height_ratio`` of that line's
+      height (similar font size -- not a smaller/larger unrelated block of
+      text). Comparing to the most recently added line, not always the
+      original start line, lets a gradual, multi-line size progression
+      (e.g. three lines that shrink slightly each step) chain together even
+      if the first and last of them individually fall outside each other's
+      ratio.
+    - the vertical gap between it and the previously included line's near
+      edge is small relative to that line's height (physically close
+      together -- not separated by a large blank gap that suggests
+      unrelated content).
 
     The walk isn't restricted to the start line's Tesseract block/paragraph
     -- a stylized brand name or heading can get split across separate
@@ -69,29 +76,34 @@ def cluster_lines(
     sized.
 
     Stops at the first line that fails either check, or after ``max_lines``.
-    Returns the ordered list of included keys (always includes
-    ``start_key`` itself).
+    Returns the ordered list of included keys, top-to-bottom, always
+    including ``start_key`` itself.
     """
     if start_key not in line_info:
         return []
 
     ordered_keys = sorted(line_info, key=lambda k: (line_info[k]["top"], line_info[k]["left"]))
     start_idx = ordered_keys.index(start_key)
+    candidates = ordered_keys[start_idx + 1 :] if direction >= 0 else reversed(ordered_keys[:start_idx])
 
     base = line_info[start_key]
     included = [start_key]
-    prev_bottom = base["top"] + base["height"]
+    prev_height = base["height"]
+    prev_edge = base["top"] + base["height"] if direction >= 0 else base["top"]
 
-    for key in ordered_keys[start_idx + 1 :]:
+    for key in candidates:
         if len(included) >= max_lines:
             break
         candidate = line_info[key]
-        if not (base["height"] * height_ratio <= candidate["height"] <= base["height"] / height_ratio):
+        if not (prev_height * height_ratio <= candidate["height"] <= prev_height / height_ratio):
             break
-        gap = candidate["top"] - prev_bottom
-        if gap > base["height"] * max_gap_ratio:
+        gap = (candidate["top"] - prev_edge) if direction >= 0 else (prev_edge - (candidate["top"] + candidate["height"]))
+        if gap > prev_height * max_gap_ratio:
             break
         included.append(key)
-        prev_bottom = candidate["top"] + candidate["height"]
+        prev_height = candidate["height"]
+        prev_edge = candidate["top"] + candidate["height"] if direction >= 0 else candidate["top"]
 
+    if direction < 0:
+        included.reverse()
     return included

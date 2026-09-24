@@ -41,9 +41,24 @@ def _overall_status(field_summary: dict) -> str:
     return "needs_review"
 
 
-def _brand_name_for_display(field_summary: dict) -> Optional[str]:
+def brand_name_for_display(field_summary: dict) -> Optional[str]:
     brand = field_summary.get("brand_name", {})
     return brand.get("value") or brand.get("expected")
+
+
+def brand_name_exists(brand_name: Optional[str]) -> bool:
+    """Whether a saved verification with this same brand name (normalized:
+    case-insensitive, whitespace-trimmed) already exists -- used to reject
+    saving a duplicate COLA application result. A blank/missing name can't
+    be meaningfully compared, so it's never treated as a duplicate."""
+    if not brand_name or not brand_name.strip():
+        return False
+    db = get_db()
+    row = db.execute(
+        "SELECT 1 FROM saved_verifications WHERE LOWER(TRIM(brand_name)) = LOWER(TRIM(?)) LIMIT 1",
+        (brand_name,),
+    ).fetchone()
+    return row is not None
 
 
 def _encode_results(field_summary: dict, warning_caps_ok, warning_bold_ok, photos: list) -> str:
@@ -93,7 +108,7 @@ def create(source_filename: str, field_summary: dict, warning_caps_ok, warning_b
         "VALUES (?, ?, ?, ?)",
         (
             source_filename,
-            _brand_name_for_display(field_summary),
+            brand_name_for_display(field_summary),
             _overall_status(field_summary),
             _encode_results(field_summary, warning_caps_ok, warning_bold_ok, photos),
         ),
@@ -108,7 +123,7 @@ def update(verification_id: int, field_summary: dict, warning_caps_ok, warning_b
         "UPDATE saved_verifications SET brand_name = ?, overall_status = ?, results_json = ?, "
         "updated_at = datetime('now') WHERE id = ?",
         (
-            _brand_name_for_display(field_summary),
+            brand_name_for_display(field_summary),
             _overall_status(field_summary),
             _encode_results(field_summary, warning_caps_ok, warning_bold_ok, photos),
             verification_id,

@@ -12,16 +12,16 @@
     <fieldset>
       <legend>Compare this batch against</legend>
       <label class="radio-label">
-        <input type="radio" name="batch_reference_mode" value="auto" checked onchange="toggleBatchMode()">
-        Auto-match each photo to your product library
-      </label>
-      <label class="radio-label">
         <input type="radio" name="batch_reference_mode" value="cola" onchange="toggleBatchMode()">
         One COLA application (covers every photo in this batch)
       </label>
       <label class="radio-label">
         <input type="radio" name="batch_reference_mode" value="cola-batch" onchange="toggleBatchMode()">
         A batch of COLA applications (results saved automatically, no photos kept)
+      </label>
+      <label class="radio-label">
+        <input type="radio" name="batch_reference_mode" value="auto" checked onchange="toggleBatchMode()">
+        Auto-match each photo to your product library
       </label>
 
       <div id="cola-document-field" style="display:none">
@@ -61,15 +61,12 @@
 
     <div class="form-actions">
       <button type="submit" class="button" id="submit-button">Upload &amp; Read Labels</button>
+      <span id="processing-indicator" class="processing-indicator" style="display:none">
+        <span class="spinner spinner-inline"></span>
+        <span id="processing-message">Processing&hellip;</span>
+      </span>
     </div>
   </form>
-
-  <div id="processing-overlay" class="processing-overlay" style="display:none">
-    <div class="processing-box">
-      <div class="spinner"></div>
-      <p id="processing-message">Processing&hellip;</p>
-    </div>
-  </div>
 
   <script>
     const PRODUCTS = {{ products_for_js|tojson }};
@@ -182,7 +179,7 @@
 
     document.getElementById('label-images').addEventListener('change', renderFileRows);
 
-    function showProcessingOverlay() {
+    function showProcessingIndicator() {
       const mode = getBatchMode();
       let count = 0;
       let noun = 'file';
@@ -208,13 +205,15 @@
         return;
       }
 
-      const message = 'Processing ' + count + ' ' + noun + (count === 1 ? '' : 's') +
-        '… this may take a minute.';
+      // An inline indicator next to the button, not a full-page overlay --
+      // it doesn't block clicking anything else on the page (e.g. the site
+      // nav) while the upload/processing request is in flight.
+      const message = 'Processing ' + count + ' ' + noun + (count === 1 ? '' : 's') + '…';
       document.getElementById('processing-message').textContent = message;
-      document.getElementById('processing-overlay').style.display = 'flex';
+      document.getElementById('processing-indicator').style.display = 'inline-flex';
       document.getElementById('submit-button').disabled = true;
     }
 
-    document.getElementById('verify-form').addEventListener('submit', showProcessingOverlay);
+    document.getElementById('verify-form').addEventListener('submit', showProcessingIndicator);
   </script>
 {% endblock %}

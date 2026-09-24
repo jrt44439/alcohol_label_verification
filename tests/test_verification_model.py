@@ -69,3 +69,28 @@ def test_delete_removes_record(app):
 def test_get_by_id_missing_returns_none(app):
     with app.app_context():
         assert verification_model.get_by_id(999) is None
+
+
+def test_brand_name_exists_true_after_save(app):
+    with app.app_context():
+        verification_model.create("test.docx", SAMPLE_FIELD_SUMMARY_PASS, None, None, [])
+        assert verification_model.brand_name_exists("Old Ridge") is True
+
+
+def test_brand_name_exists_is_case_and_whitespace_insensitive(app):
+    with app.app_context():
+        verification_model.create("test.docx", SAMPLE_FIELD_SUMMARY_PASS, None, None, [])
+        assert verification_model.brand_name_exists("  old ridge  ") is True
+
+
+def test_brand_name_exists_false_for_different_name(app):
+    with app.app_context():
+        verification_model.create("test.docx", SAMPLE_FIELD_SUMMARY_PASS, None, None, [])
+        assert verification_model.brand_name_exists("New Summit") is False
+
+
+def test_brand_name_exists_false_for_blank_name(app):
+    with app.app_context():
+        verification_model.create("test.docx", SAMPLE_FIELD_SUMMARY_PASS, None, None, [])
+        assert verification_model.brand_name_exists(None) is False
+        assert verification_model.brand_name_exists("   ") is False

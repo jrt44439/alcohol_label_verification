@@ -113,6 +113,14 @@ PO Box 99
 Frankfort, KY 40602
 """
 
+FORM_WITH_APPLICANT_HEADING_TRAILING_WORDS = """\
+8. NAME AND ADDRESS OF APPLICANT AS SHOWN ON PERMIT OR BREWER'S NOTICE
+
+Old Ridge Distillery
+123 Barrel Rd
+Frankfort, Kentucky 40601 Rev. 2024-01
+"""
+
 
 def test_extract_labeled_field_finds_value():
     assert extract_labeled_field(LABELED_SPEC_SHEET, ["BRAND\\s*NAME"]) == "Old Ridge"
@@ -224,3 +232,13 @@ def test_extract_all_fields_producer_info_from_name_and_address_of_applicant():
     assert result["producer_info"] == "Old Ridge Distillery 123 Barrel Rd Frankfort, KY 40601"
     assert "MAILING ADDRESS" not in result["producer_info"]
     assert "PO Box" not in result["producer_info"]
+
+
+def test_extract_all_fields_producer_info_heading_with_trailing_words():
+    # The heading itself has more caps words after "APPLICANT" (not in
+    # parentheses) -- must not be mistaken for the pattern matching mid-
+    # sentence, and the trailing "Rev. 2024-01" noise after the full state
+    # name + zip must still be trimmed off.
+    result = extract_all_fields_from_document(FORM_WITH_APPLICANT_HEADING_TRAILING_WORDS)
+    assert result["producer_info"] == "Old Ridge Distillery 123 Barrel Rd Frankfort, Kentucky 40601"
+    assert "Rev" not in result["producer_info"]

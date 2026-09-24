@@ -1,6 +1,12 @@
 {% extends "base.html" %}
 {% block title %}Alcohol Label Verification{% endblock %}
 {% block content %}
+  <div class="warning-banner">
+    <strong>&#9888; Review every submission carefully.</strong> OCR and text-extraction results are
+    automated and can misread or miss text. Always double-check each field against the original photo
+    or COLA application before relying on a match, mismatch, or auto-saved result.
+  </div>
+
   <h1>Alcohol Label Verification</h1>
   <p>Check a photographed bottle label against known-correct reference values for
      brand name, class/type, alcohol content, net contents, producer, country of

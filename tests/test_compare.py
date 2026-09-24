@@ -54,6 +54,89 @@ def test_compare_text_field_class_type_broad_category_mismatch_across_categories
     assert result.status == MatchStatus.MISMATCH
 
 
+def test_compare_text_field_producer_broad_match_missing_street_address():
+    # The label's small fine print omitted the street address entirely,
+    # but name, city, and state all agree.
+    extracted = "Old Ridge Distillery, Frankfort, KY"
+    expected = "Old Ridge Distillery, 123 Barrel Rd, Frankfort, KY 40601"
+    result = compare_text_field("producer_info", extracted, expected, TEXT_THRESHOLD)
+    assert result.status == MatchStatus.MATCH
+
+
+def test_compare_text_field_producer_broad_match_full_vs_abbreviated_state():
+    extracted = "Old Ridge Distillery Frankfort KY"
+    expected = "Old Ridge Distillery, 123 Barrel Rd, Frankfort, Kentucky 40601"
+    result = compare_text_field("producer_info", extracted, expected, TEXT_THRESHOLD)
+    assert result.status == MatchStatus.MATCH
+
+
+def test_compare_text_field_producer_broad_match_tolerates_different_city_if_name_and_state_agree():
+    # Even broader: this no longer requires the city to match too -- a
+    # handful of shared keywords (here, the full producer name plus the
+    # agreeing state) is enough, even though the city was misread/differs.
+    extracted = "Old Ridge Distillery, Louisville, KY"
+    expected = "Old Ridge Distillery, 123 Barrel Rd, Frankfort, KY 40601"
+    result = compare_text_field("producer_info", extracted, expected, TEXT_THRESHOLD)
+    assert result.status == MatchStatus.MATCH
+
+
+def test_compare_text_field_producer_broad_match_requires_matching_state():
+    # Name keywords alone ("old ridge distillery") aren't enough without an
+    # agreeing state -- a completely different state is a strong enough
+    # signal that this is actually a different location/producer.
+    extracted = "Old Ridge Distillery, Louisville, KY"
+    expected = "Old Ridge Distillery, 123 Barrel Rd, Bend, OR 97701"
+    result = compare_text_field("producer_info", extracted, expected, TEXT_THRESHOLD)
+    assert result.status == MatchStatus.MISMATCH
+
+
+def test_compare_text_field_producer_broad_match_requires_similar_name():
+    extracted = "Blue Valley Spirits, Frankfort, KY"
+    expected = "Old Ridge Distillery, 123 Barrel Rd, Frankfort, KY 40601"
+    result = compare_text_field("producer_info", extracted, expected, TEXT_THRESHOLD)
+    assert result.status == MatchStatus.MISMATCH
+
+
+def test_compare_text_field_producer_broad_match_tolerates_misread_city_keyword():
+    # "Frankfoit" (a plausible OCR misread of "Frankfort") doesn't show up
+    # as a shared keyword at all -- but the name words plus the agreeing
+    # state are still enough shared keywords on their own.
+    extracted = "Old Ridge Distillery, Frankfoit, KY"
+    expected = "Old Ridge Distillery, 123 Barrel Rd, Frankfort, KY 40601"
+    result = compare_text_field("producer_info", extracted, expected, TEXT_THRESHOLD)
+    assert result.status == MatchStatus.MATCH
+
+
+def test_compare_text_field_producer_broad_match_tolerates_reordered_name_words():
+    extracted = "Distillery Old Ridge, Frankfort, KY"
+    expected = "Old Ridge Distillery, 123 Barrel Rd, Frankfort, KY 40601"
+    result = compare_text_field("producer_info", extracted, expected, TEXT_THRESHOLD)
+    assert result.status == MatchStatus.MATCH
+
+
+def test_compare_text_field_producer_broad_match_just_a_few_shared_keywords_is_enough():
+    # Short values: only 2 significant keywords ("acme", "nv") on the
+    # shorter side, both shared -- that's already "a few keywords".
+    extracted = "Acme Distillery, Reno, NV"
+    expected = "Acme, NV"
+    result = compare_text_field("producer_info", extracted, expected, TEXT_THRESHOLD)
+    assert result.status == MatchStatus.MATCH
+
+
+def test_compare_text_field_producer_broad_match_ignores_suffix_and_street_noise_words():
+    extracted = "Old Ridge Distillery LLC, 456 Vineyard Lane, Frankfort, KY"
+    expected = "Old Ridge Distillery Inc, Frankfort, KY 40601"
+    result = compare_text_field("producer_info", extracted, expected, TEXT_THRESHOLD)
+    assert result.status == MatchStatus.MATCH
+
+
+def test_compare_text_field_producer_broad_match_skipped_without_state():
+    extracted = "Old Ridge Distillery"
+    expected = "Old Ridge Distillery, 123 Barrel Rd, Frankfort, KY 40601"
+    result = compare_text_field("producer_info", extracted, expected, TEXT_THRESHOLD)
+    assert result.status == MatchStatus.MISMATCH
+
+
 def test_compare_text_field_not_found():
     result = compare_text_field("brand_name", None, "Old Ridge", TEXT_THRESHOLD)
     assert result.status == MatchStatus.NOT_FOUND

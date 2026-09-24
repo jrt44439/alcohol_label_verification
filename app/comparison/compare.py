@@ -8,6 +8,7 @@ from rapidfuzz import fuzz
 
 from config import CLASS_TYPE_BROAD_CATEGORY
 from app.comparison.normalize import normalize_abv, normalize_text, normalize_volume
+from app.ocr import field_extractors as ocr_field_extractors
 
 # Longest keyword first, so e.g. "kentucky straight bourbon" is matched
 # before the bare "bourbon" it contains.
@@ -25,6 +26,58 @@ def _class_type_broad_category(value: str | None) -> str | None:
         if re.search(rf"\b{re.escape(keyword)}\b", lowered):
             return CLASS_TYPE_BROAD_CATEGORY[keyword]
     return None
+
+
+# Filler words that don't help identify a producer -- dropped before
+# counting shared keywords, so e.g. a differing suite number or "LLC" vs
+# "Inc" doesn't cost a match.
+_PRODUCER_NOISE_WORDS = {
+    "street", "st", "avenue", "ave", "road", "rd", "lane", "ln", "drive",
+    "dr", "boulevard", "blvd", "suite", "ste", "unit", "floor", "fl",
+    "way", "highway", "hwy", "llc", "inc", "co", "company", "corp", "ltd",
+}
+
+
+def _producer_keywords(value: str | None) -> set[str]:
+    """Significant, comparable keyword tokens from a producer/address
+    value -- lowercased and punctuation-stripped, with any full state name
+    normalized to its 2-letter abbreviation first (so "Kentucky" and "KY"
+    count as the same keyword), common street/corporate filler words and
+    pure-digit tokens (street numbers, zip codes) dropped."""
+    if not value:
+        return set()
+    normalized = ocr_field_extractors.normalize_states_in_text(value)
+    words = normalize_text(normalized).split()
+    return {w for w in words if w not in _PRODUCER_NOISE_WORDS and not w.isdigit() and len(w) > 1}
+
+
+def _producer_state(value: str | None) -> str | None:
+    if not value:
+        return None
+    match = ocr_field_extractors.find_state_match(value)
+    return ocr_field_extractors.normalize_state(match.group(0)) if match else None
+
+
+def _producer_broad_match(a: str | None, b: str | None) -> bool:
+    """Whether two producer/address values broadly match. A recognized
+    state has to be found on both sides and agree -- abbreviation and full
+    name normalized to the same form (e.g. "Kentucky" == "KY") -- that's
+    the one non-negotiable signal. Beyond that, this just looks for a
+    handful of shared keywords (name words, city, ...) between the two
+    values rather than requiring them to be split into precise name/city
+    components -- tolerant of a missing street address, reordered words,
+    minor OCR noise, punctuation, or even a differently-read city, as long
+    as enough of the rest still lines up."""
+    state_a, state_b = _producer_state(a), _producer_state(b)
+    if not state_a or not state_b or state_a != state_b:
+        return False
+
+    keywords_a, keywords_b = _producer_keywords(a), _producer_keywords(b)
+    smaller = min(len(keywords_a), len(keywords_b))
+    if smaller < 2:
+        return False
+    required = min(3, smaller)
+    return len(keywords_a & keywords_b) >= required
 
 
 class MatchStatus(str, Enum):
@@ -86,6 +139,14 @@ def compare_text_field(
         extracted_category = _class_type_broad_category(extracted)
         expected_category = _class_type_broad_category(expected)
         if extracted_category and extracted_category == expected_category:
+            status = MatchStatus.MATCH
+
+    if status == MatchStatus.MISMATCH and field_key == "producer_info":
+        # One side (often the photographed label, especially small fine
+        # print) may be missing words the other has -- a street address, a
+        # suffix like "LLC", punctuation. If both still agree on producer
+        # name, city, and state, that's a broad enough match.
+        if _producer_broad_match(extracted, expected):
             status = MatchStatus.MATCH
 
     return FieldComparison(field_key, display_name, extracted, expected, status, score)

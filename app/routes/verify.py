@@ -1,7 +1,7 @@
 import os
 import uuid
 
-from flask import Blueprint, current_app, flash, redirect, render_template, request, send_from_directory, url_for
+from flask import Blueprint, current_app, flash, jsonify, redirect, render_template, request, send_from_directory, url_for
 from werkzeug.utils import secure_filename
 
 from app.comparison import compare as compare_module
@@ -240,6 +240,30 @@ def _group_key(item: dict) -> tuple:
     return ("standalone", item["index"])
 
 
+def _apply_manual_overrides(field_summary: dict, form, prefix: str) -> dict:
+    """Apply manual pass/fail overrides submitted from the combined table's
+    per-field buttons, without touching any extracted/expected value.
+    ``prefix`` (e.g. "override_status_0_" for group 0, live review, or
+    "override_status_" for a single saved record) plus the field key is the
+    submitted form field name; its value is "match", "mismatch", or missing/
+    empty for no override.
+
+    ``computed_status`` preserves the freshly auto-computed status (always
+    re-set here, since ``field_summary`` is rebuilt fresh from
+    aggregate_field() every request) so a "clear override" action can
+    revert to it later, even after a manual override has been saved and
+    the page reloaded."""
+    for field, agg in field_summary.items():
+        agg["computed_status"] = agg["status"]
+        raw = form.get(f"{prefix}{field}", "")
+        if raw in ("match", "mismatch"):
+            agg["status"] = raw
+            agg["manual_override"] = True
+        else:
+            agg["manual_override"] = False
+    return field_summary
+
+
 def _group_items(items: list[dict]) -> list[dict]:
     """Group items by reference identity and compute a per-field aggregate
     summary for each group (see compare_module.aggregate_field)."""
@@ -438,10 +462,14 @@ def compare():
             }
         )
 
+    groups = _group_items(items)
+    for i, group in enumerate(groups):
+        _apply_manual_overrides(group["field_summary"], request.form, f"override_status_{i}_")
+
     return render_template(
         "verify/results.html",
         stage="compared",
-        groups=_group_items(items),
+        groups=groups,
         item_count=len(items),
         label_fields=product_model.LABEL_FIELDS,
         field_display_names=compare_module.FIELD_DISPLAY_NAMES,
@@ -453,26 +481,32 @@ def compare():
 def save_product():
     action = request.form.get("action")
     data = {f: request.form.get(f, "").strip() or None for f in product_model.DOCUMENT_FILLABLE_FIELDS}
+    # Set by callers (e.g. the COLA saved-result page's "Add to Product
+    # Library" button) that want to stay on the current screen instead of
+    # being redirected to the product library after saving.
+    stay_on_page = request.form.get("ajax") == "1"
+
+    def respond(message: str, success: bool):
+        if stay_on_page:
+            return jsonify(success=success, message=message)
+        flash(message, "success" if success else "error")
+        return redirect(url_for("products.list_products") if success else url_for("verify.upload"))
 
     if action == "update":
         product_id = request.form.get("product_id")
         existing = product_model.get_by_id(int(product_id)) if product_id else None
         if existing is None:
-            flash("Product not found.", "error")
-            return redirect(url_for("verify.upload"))
+            return respond("Product not found.", False)
         data["name"] = existing.name
         product_model.update(existing.id, data)
-        flash(f"Updated '{existing.name}' with the corrected values.", "success")
-    else:
-        name = (request.form.get("name") or "").strip()
-        if not name:
-            flash("Enter a name for the new product before saving.", "error")
-            return redirect(url_for("verify.upload"))
-        data["name"] = name
-        product_model.create(data)
-        flash(f"Saved '{name}' to the product library.", "success")
+        return respond(f"Updated '{existing.name}' with the corrected values.", True)
 
-    return redirect(url_for("products.list_products"))
+    name = (request.form.get("name") or "").strip()
+    if not name:
+        return respond("Enter a name for the new product before saving.", False)
+    data["name"] = name
+    product_model.create(data)
+    return respond(f"Saved '{name}' to the product library.", True)
 
 
 @bp.route("/run-cola-batch", methods=["POST"])
@@ -483,10 +517,18 @@ def run_cola_batch():
         return redirect(url_for("verify.upload"))
 
     saved_count = 0
+    duplicate_filenames = []
     for doc_file in doc_files:
         result, error = _process_cola_document_for_save(doc_file)
         if result is None:
             flash(f"{doc_file.filename}: {error}", "error")
+            continue
+        brand_name = verification_model.brand_name_for_display(result["field_summary"])
+        if verification_model.brand_name_exists(brand_name):
+            # Same brand name as an already-saved result (including one
+            # just saved earlier in this same batch) -- skip rather than
+            # save a duplicate COLA application.
+            duplicate_filenames.append(doc_file.filename)
             continue
         verification_model.create(
             doc_file.filename,
@@ -499,6 +541,13 @@ def run_cola_batch():
 
     if saved_count:
         flash(f"Saved {saved_count} verification result{'s' if saved_count != 1 else ''}.", "success")
+    if duplicate_filenames:
+        flash(
+            f"Skipped {len(duplicate_filenames)} duplicate application"
+            f"{'s' if len(duplicate_filenames) != 1 else ''} already saved under the same name: "
+            f"{', '.join(duplicate_filenames)}",
+            "error",
+        )
     return redirect(url_for("verify.list_saved_results"))
 
 
@@ -514,11 +563,15 @@ def view_saved_result(verification_id):
     if verification is None:
         flash("Saved verification not found.", "error")
         return redirect(url_for("verify.list_saved_results"))
+    application_fields = {
+        f: verification.field_summary.get(f, {}).get("expected") or "" for f in product_model.DOCUMENT_FILLABLE_FIELDS
+    }
     return render_template(
         "verify/saved_detail.html",
         verification=verification,
         label_fields=product_model.LABEL_FIELDS,
         field_display_names=compare_module.FIELD_DISPLAY_NAMES,
+        application_fields=application_fields,
     )
 
 
@@ -582,6 +635,8 @@ def update_saved_result(verification_id):
         field_summary = verification.field_summary
         warning_caps_ok = verification.warning_caps_ok
         warning_bold_ok = verification.warning_bold_ok
+
+    _apply_manual_overrides(field_summary, request.form, "override_status_")
 
     verification_model.update(verification_id, field_summary, warning_caps_ok, warning_bold_ok, photos)
     flash("Saved corrections.", "success")

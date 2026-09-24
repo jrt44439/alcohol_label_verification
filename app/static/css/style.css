@@ -1,6 +1,7 @@
 :root {
   --border: #d9d9d9;
   --bg-muted: #f6f6f7;
+  --bg-page: #faf9f6;
   --text-muted: #666;
   --match: #1c7c3c;
   --match-bg: #e6f6ea;
@@ -18,7 +19,25 @@ body {
   font-family: -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
   margin: 0;
   color: #1a1a1a;
-  background: #fff;
+  background: var(--bg-page);
+  position: relative;
+}
+
+/* Faint, fixed TTB-logo watermark behind all page content. Drop the logo
+   image file at app/static/img/ttb-logo.png (any reasonable resolution,
+   transparent background preferred) -- this is a no-op until that file
+   exists, since a missing background-image just renders nothing. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background-image: url("/static/img/ttb-logo.png");
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: min(55vmin, 480px);
+  opacity: 0.05;
+  pointer-events: none;
+  z-index: -1;
 }
 
 .site-header {
@@ -160,35 +179,21 @@ fieldset {
   gap: 1rem;
 }
 
-.processing-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(255, 255, 255, 0.9);
-  display: flex;
+.processing-indicator {
+  display: inline-flex;
   align-items: center;
-  justify-content: center;
-  z-index: 1000;
+  gap: 0.5rem;
+  color: var(--text-muted);
+  font-size: 0.9rem;
 }
 
-.processing-box {
-  text-align: center;
-  padding: 2rem;
-}
-
-.processing-box .spinner {
-  width: 40px;
-  height: 40px;
-  margin: 0 auto 1rem;
-  border: 4px solid var(--border);
+.spinner-inline {
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--border);
   border-top-color: #1a1a1a;
   border-radius: 50%;
   animation: processing-spin 0.8s linear infinite;
-}
-
-.processing-box p {
-  font-size: 1.05rem;
-  color: #1a1a1a;
-  margin: 0;
 }
 
 @keyframes processing-spin {
@@ -203,6 +208,16 @@ fieldset {
 }
 .flash-success { background: var(--match-bg); color: var(--match); }
 .flash-error { background: var(--mismatch-bg); color: var(--mismatch); }
+
+.warning-banner {
+  background: var(--not-found-bg);
+  color: var(--not-found);
+  border: 1px solid var(--not-found);
+  border-radius: 8px;
+  padding: 0.85rem 1.1rem;
+  margin-bottom: 1.25rem;
+  font-size: 0.95rem;
+}
 
 .muted { color: var(--text-muted); }
 
@@ -383,6 +398,13 @@ fieldset {
   min-width: 200px;
 }
 
+.save-product-message {
+  font-size: 0.85rem;
+}
+
+.save-product-success { color: var(--match); }
+.save-product-error { color: var(--mismatch); }
+
 .file-row {
   margin-bottom: 1rem;
   display: flex;
@@ -431,6 +453,42 @@ fieldset {
 .summary-row.status-mismatch td:first-child { border-left: 3px solid var(--mismatch); }
 .summary-row.status-not_found td:first-child { border-left: 3px solid var(--not-found); }
 .summary-row.status-disagreement td:first-child { border-left: 3px solid var(--disagreement); }
+
+.status-cell {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.manual-tag {
+  font-size: 0.65rem;
+  font-weight: 600;
+  margin-left: 0.3rem;
+  opacity: 0.8;
+}
+
+.override-buttons {
+  display: inline-flex;
+  gap: 0.2rem;
+}
+
+.override-btn {
+  width: 1.5rem;
+  height: 1.5rem;
+  line-height: 1;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 0.8rem;
+  padding: 0;
+}
+
+.override-pass:hover { background: var(--match-bg); border-color: var(--match); color: var(--match); }
+.override-fail:hover { background: var(--mismatch-bg); border-color: var(--mismatch); color: var(--mismatch); }
+.override-clear { color: var(--text-muted); }
+.override-clear:hover { background: var(--bg-muted); }
 
 @media (max-width: 600px) {
   .summary-table { display: block; overflow-x: auto; white-space: nowrap; }

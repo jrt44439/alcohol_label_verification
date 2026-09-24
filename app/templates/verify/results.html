@@ -11,6 +11,7 @@
     <input type="hidden" name="item_count" value="{{ item_count }}">
 
     {% for group in groups %}
+      {% set group_index = loop.index0 %}
       <section class="result-group">
         <h2 class="result-group-title">{{ group.label }}</h2>
 
@@ -27,12 +28,28 @@
           <tbody>
             {% for field in label_fields %}
               {% set agg = group.field_summary[field] %}
-              <tr class="summary-row status-{{ agg.status }}">
+              {% set status_labels = {"match": "MATCH", "mismatch": "MISMATCH", "not_found": "NOT FOUND", "disagreement": "DISAGREEMENT"} %}
+              <tr class="summary-row status-{{ agg.status }}" id="summary-row-{{ group_index }}-{{ field }}">
                 <td>{{ field_display_names[field] }}</td>
-                <td>
-                  <span class="badge badge-{{ agg.status }}">
-                    {{ {"match": "MATCH", "mismatch": "MISMATCH", "not_found": "NOT FOUND", "disagreement": "DISAGREEMENT"}[agg.status] }}
+                <td class="status-cell">
+                  <span class="badge badge-{{ agg.status }}" id="badge-{{ group_index }}-{{ field }}"
+                        data-computed-status="{{ agg.computed_status or agg.status }}"
+                        data-computed-text="{{ status_labels[agg.computed_status or agg.status] }}">
+                    <span class="badge-text">{{ status_labels[agg.status] }}</span>
+                    <span class="manual-tag" style="{{ '' if agg.manual_override else 'display:none' }}">(Manual)</span>
                   </span>
+                  <span class="override-buttons">
+                    <button type="button" class="override-btn override-pass" title="Manually mark this field as passing"
+                            onclick="setFieldOverride({{ group_index }}, '{{ field }}', 'match')">&#10003;</button>
+                    <button type="button" class="override-btn override-fail" title="Manually mark this field as failing"
+                            onclick="setFieldOverride({{ group_index }}, '{{ field }}', 'mismatch')">&#10007;</button>
+                    <button type="button" class="override-btn override-clear" title="Clear manual override"
+                            style="{{ '' if agg.manual_override else 'display:none' }}"
+                            onclick="clearFieldOverride({{ group_index }}, '{{ field }}')">&#8635;</button>
+                  </span>
+                  <input type="hidden" id="override-input-{{ group_index }}-{{ field }}"
+                         name="override_status_{{ group_index }}_{{ field }}"
+                         value="{{ agg.status if agg.manual_override else '' }}">
                 </td>
                 <td>
                   {% if agg.status == "disagreement" %}
@@ -211,6 +228,41 @@
 
       document.body.appendChild(form);
       form.submit();
+    }
+
+    const STATUS_LABELS = {match: 'MATCH', mismatch: 'MISMATCH'};
+
+    function setFieldOverride(groupIndex, field, status) {
+      const key = groupIndex + '-' + field;
+      const input = document.getElementById('override-input-' + key);
+      const badge = document.getElementById('badge-' + key);
+      const row = document.getElementById('summary-row-' + key);
+      if (input) input.value = status;
+      if (badge) {
+        badge.className = 'badge badge-' + status;
+        badge.querySelector('.badge-text').textContent = STATUS_LABELS[status];
+        badge.querySelector('.manual-tag').style.display = '';
+      }
+      if (row) row.className = 'summary-row status-' + status;
+      const cell = badge ? badge.closest('.status-cell') : null;
+      if (cell) cell.querySelector('.override-clear').style.display = '';
+    }
+
+    function clearFieldOverride(groupIndex, field) {
+      const key = groupIndex + '-' + field;
+      const input = document.getElementById('override-input-' + key);
+      const badge = document.getElementById('badge-' + key);
+      const row = document.getElementById('summary-row-' + key);
+      if (input) input.value = '';
+      if (badge) {
+        const status = badge.dataset.computedStatus;
+        badge.className = 'badge badge-' + status;
+        badge.querySelector('.badge-text').textContent = badge.dataset.computedText;
+        badge.querySelector('.manual-tag').style.display = 'none';
+        if (row) row.className = 'summary-row status-' + status;
+      }
+      const cell = badge ? badge.closest('.status-cell') : null;
+      if (cell) cell.querySelector('.override-clear').style.display = 'none';
     }
   </script>
 {% endblock %}

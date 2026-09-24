@@ -3,9 +3,13 @@ import cv2
 import numpy as np
 from PIL import Image, ImageOps
 
-# Below this width, small print becomes too few pixels tall for Tesseract to
-# resolve reliably, so we upscale before running OCR.
-MIN_OCR_WIDTH = 1800
+# Below this width, small print (e.g. the government-mandated fine print
+# producer/address line) becomes too few pixels tall for Tesseract to
+# resolve reliably, so we upscale before running OCR. Raised from the
+# original 1800 -- even a photo that already clears that width can still
+# leave the smallest label text under-resolved, since a bottle photo's
+# overall resolution doesn't scale with how tiny its fine print is.
+MIN_OCR_WIDTH = 2400
 
 
 def load_image(file_storage) -> Image.Image:

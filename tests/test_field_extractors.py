@@ -26,6 +26,22 @@ def test_extract_abv_absent():
     assert field_extractors.extract_abv(ABSENT_FIELDS_LABEL) is None
 
 
+def test_extract_abv_alc_before_percent():
+    assert field_extractors.extract_abv("ALC. 45%") == "45% ALC/VOL"
+
+
+def test_extract_abv_alc_vol_before_percent():
+    assert field_extractors.extract_abv("ALC./VOL. 45%") == "45% ALC/VOL"
+
+
+def test_extract_abv_alcohol_by_volume_before_percent():
+    assert field_extractors.extract_abv("ALCOHOL BY VOLUME: 45%") == "45% ALC/VOL"
+
+
+def test_extract_abv_alc_before_percent_with_proof():
+    assert field_extractors.extract_abv("ALC. 45% (90 PROOF)") == "45% ALC/VOL (90 PROOF)"
+
+
 def test_extract_net_contents_clean():
     assert field_extractors.extract_net_contents(CLEAN_BOURBON_LABEL) == "750 mL"
 
@@ -46,6 +62,25 @@ def test_extract_producer_info_clean():
     result = field_extractors.extract_producer_info(CLEAN_BOURBON_LABEL)
     assert result is not None
     assert "Old Ridge Distillery" in result
+
+
+def test_strip_producer_keyword_prefix_variants():
+    cases = {
+        "Bottled by Old Ridge Distillery": "Old Ridge Distillery",
+        "Imported by Grand Cru Imports": "Grand Cru Imports",
+        "Bottled and Canned by Summit Brewing Co": "Summit Brewing Co",
+        "Distilled and Bottled by Old Ridge Distillery": "Old Ridge Distillery",
+        "Produced by: Old Ridge Distillery": "Old Ridge Distillery",
+        "No Keyword Prefix Here": "No Keyword Prefix Here",
+    }
+    for value, expected in cases.items():
+        assert field_extractors.strip_producer_keyword_prefix(value) == expected
+
+
+def test_extract_producer_info_strips_bottled_and_canned_by():
+    text = "Bottled and Canned by Summit Brewing Co, Denver, CO 80202\n"
+    result = field_extractors.extract_producer_info(text)
+    assert result == "Summit Brewing Co, Denver, CO 80202"
 
 
 def test_extract_producer_info_does_not_swallow_country_line():
@@ -156,6 +191,36 @@ def test_looks_like_address_end_covers_additional_countries():
         assert field_extractors.looks_like_address_end(f"Some City, {country}") is True
 
 
+def test_looks_like_address_end_covers_full_state_names():
+    # A full state name (not just its 2-letter abbreviation) is just as
+    # strong a signal that an address line has ended.
+    assert field_extractors.looks_like_address_end("Frankfort, Kentucky") is True
+    assert field_extractors.looks_like_address_end("Portland, Oregon") is True
+
+
+def test_normalize_states_in_text_replaces_full_name_with_abbreviation():
+    assert field_extractors.normalize_states_in_text("Frankfort, Kentucky 40601") == "Frankfort, KY 40601"
+    assert field_extractors.normalize_states_in_text("Portland, Oregon") == "Portland, OR"
+
+
+def test_normalize_states_in_text_leaves_abbreviation_and_unmatched_text_unchanged():
+    assert field_extractors.normalize_states_in_text("Frankfort, KY 40601") == "Frankfort, KY 40601"
+    assert field_extractors.normalize_states_in_text("No state here") == "No state here"
+
+
+def test_trim_to_address_end_stops_after_full_state_name():
+    value = "Old Ridge Distillery Frankfort, Kentucky Rev. 2024-01"
+    assert field_extractors.trim_to_address_end(value) == "Old Ridge Distillery Frankfort, Kentucky"
+
+
+def test_trim_to_address_end_extends_past_first_match_to_a_later_one():
+    # A state/zip/country appearing *after* an earlier one is still part of
+    # the address (e.g. city/state then a country line for an import) --
+    # only content after the LAST one should be trimmed away.
+    value = "Riverbend Winery Napa, CA 94558 United States Some Trailing Notes"
+    assert field_extractors.trim_to_address_end(value) == "Riverbend Winery Napa, CA 94558 United States"
+
+
 def test_extract_producer_info_stops_when_whole_address_is_on_the_anchor_line():
     # The entire address, including its zip, is already on the "Produced
     # by" line -- nothing on the following unrelated line should be pulled
@@ -165,7 +230,9 @@ def test_extract_producer_info_stops_when_whole_address_is_on_the_anchor_line():
         "Reference Number: 12345 for Office CA\n"
     )
     result = field_extractors.extract_producer_info(text)
-    assert result == "Produced by Example Distillery, 100 Main St, Louisville, KY 40202"
+    # The "Produced by" designation phrase is stripped -- not part of the
+    # actual name/address value.
+    assert result == "Example Distillery, 100 Main St, Louisville, KY 40202"
 
 
 def test_extract_producer_info_stops_right_after_wrapped_address_ends():
@@ -177,7 +244,7 @@ def test_extract_producer_info_stops_right_after_wrapped_address_ends():
         "Reference Number: 12345 for Office CA\n"
     )
     result = field_extractors.extract_producer_info(text)
-    assert result == "Produced by Example Distillery 100 Main St Louisville, KY 40202"
+    assert result == "Example Distillery 100 Main St Louisville, KY 40202"
 
 
 def test_extract_producer_info_stops_at_address_end():
@@ -186,7 +253,7 @@ def test_extract_producer_info_stops_at_address_end():
         "Please retain this document for your records.\n"
     )
     result = field_extractors.extract_producer_info(text)
-    assert result == "Produced by Riverbend Winery, 456 Vineyard Lane, Napa, CA 94558"
+    assert result == "Riverbend Winery, 456 Vineyard Lane, Napa, CA 94558"
 
 
 def test_extract_health_warning_present():
@@ -270,7 +337,7 @@ def test_extract_producer_info_from_words_merges_multiline_address():
     ]
     ocr_result = OcrResult(raw_text="", words=words)
     result = field_extractors.extract_producer_info_from_words(ocr_result)
-    assert result == "Produced by Old Ridge Distillery Frankfort, KY 40601"
+    assert result == "Old Ridge Distillery Frankfort, KY 40601"
 
 
 def test_extract_producer_info_from_words_excludes_smaller_font_fine_print():
@@ -287,7 +354,7 @@ def test_extract_producer_info_from_words_excludes_smaller_font_fine_print():
     ]
     ocr_result = OcrResult(raw_text="", words=words)
     result = field_extractors.extract_producer_info_from_words(ocr_result)
-    assert result == "Produced by Old Ridge Distillery"
+    assert result == "Old Ridge Distillery"
     assert "responsibly" not in result.lower()
 
 
@@ -320,6 +387,32 @@ def test_extract_brand_name_merges_line_from_a_different_tesseract_block():
     ]
     ocr_result = OcrResult(raw_text="OLD RIDGE DISTILLERY", words=words)
     assert field_extractors.extract_brand_name(ocr_result) == "OLD RIDGE DISTILLERY"
+
+
+def test_extract_brand_name_picks_up_smaller_line_above_the_tallest_line():
+    # The tallest single line isn't always the first line of a multi-line
+    # brand name -- a smaller tagline/subtitle can sit above it (e.g. a
+    # logo's "ESTABLISHED 1875" over a large "OLD RIDGE"). The tallest line
+    # is still the natural anchor (it's the most distinctive), but the
+    # search must also look upward from it, not just downward.
+    words = [
+        _word("ESTABLISHED 1875", height=40, top=0, left=0, line_num=1),
+        _word("OLD RIDGE", height=60, top=44, left=0, line_num=2),
+        # Class/type line below: noticeably shorter, should not be merged in.
+        _word("Bourbon", height=20, top=110, left=0, line_num=3),
+    ]
+    ocr_result = OcrResult(raw_text="ESTABLISHED 1875 OLD RIDGE Bourbon", words=words)
+    assert field_extractors.extract_brand_name(ocr_result) == "ESTABLISHED 1875 OLD RIDGE"
+
+
+def test_extract_brand_name_chains_three_lines_of_gradually_shrinking_font():
+    words = [
+        _word("OLD RIDGE", height=60, top=0, left=0, line_num=1),
+        _word("KENTUCKY", height=44, top=65, left=0, line_num=2),
+        _word("DISTILLERY", height=32, top=115, left=0, line_num=3),
+    ]
+    ocr_result = OcrResult(raw_text="OLD RIDGE KENTUCKY DISTILLERY", words=words)
+    assert field_extractors.extract_brand_name(ocr_result) == "OLD RIDGE KENTUCKY DISTILLERY"
 
 
 def test_extract_brand_name_does_not_merge_same_height_line_far_below():

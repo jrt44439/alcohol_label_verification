@@ -8,64 +8,91 @@
   <p class="muted">Saved {{ verification.created_at }}{% if verification.updated_at != verification.created_at %}, last corrected {{ verification.updated_at }}{% endif %}.
     No photos are stored — only the extracted values, match status, and raw OCR text from when this was checked.</p>
 
-  <table class="summary-table">
-    <thead>
-      <tr>
-        <th>Field</th>
-        <th>Status</th>
-        <th>Product Label</th>
-        <th>On</th>
-        <th>Application</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for field in label_fields %}
-        {% set agg = verification.field_summary[field] %}
-        <tr class="summary-row status-{{ agg.status }}">
-          <td>{{ field_display_names[field] }}</td>
-          <td>
-            <span class="badge badge-{{ agg.status }}">
-              {{ {"match": "MATCH", "mismatch": "MISMATCH", "not_found": "NOT FOUND", "disagreement": "DISAGREEMENT"}[agg.status] }}
+  <div class="save-actions">
+    <label class="save-name-field">
+      Product name
+      <input type="text" id="new-product-name" value="{{ verification.brand_name or '' }}">
+    </label>
+    <button type="button" class="button button-secondary" id="save-product-button" onclick="saveApplicationAsProduct()">Add to Product Library</button>
+    <span id="save-product-message" class="save-product-message" role="status"></span>
+    <p class="muted">Saves this COLA application's reference values (brand, class/type, alcohol content, net
+      contents, producer, country of origin) as a new product, so future label photos can be auto-matched
+      against it without re-uploading this application.</p>
+  </div>
+
+  <form id="correction-form" method="post" action="{{ url_for('verify.update_saved_result', verification_id=verification.id) }}" class="stacked-form">
+    <table class="summary-table">
+      <thead>
+        <tr>
+          <th>Field</th>
+          <th>Status</th>
+          <th>Product Label</th>
+          <th>On</th>
+          <th>Application</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for field in label_fields %}
+          {% set agg = verification.field_summary[field] %}
+          {% set status_labels = {"match": "MATCH", "mismatch": "MISMATCH", "not_found": "NOT FOUND", "disagreement": "DISAGREEMENT"} %}
+          <tr class="summary-row status-{{ agg.status }}" id="summary-row-{{ field }}">
+            <td>{{ field_display_names[field] }}</td>
+            <td class="status-cell">
+              <span class="badge badge-{{ agg.status }}" id="badge-{{ field }}"
+                    data-computed-status="{{ agg.computed_status or agg.status }}"
+                    data-computed-text="{{ status_labels[agg.computed_status or agg.status] }}">
+                <span class="badge-text">{{ status_labels[agg.status] }}</span>
+                <span class="manual-tag" style="{{ '' if agg.manual_override else 'display:none' }}">(Manual)</span>
+              </span>
+              <span class="override-buttons">
+                <button type="button" class="override-btn override-pass" title="Manually mark this field as passing"
+                        onclick="setFieldOverride('{{ field }}', 'match')">&#10003;</button>
+                <button type="button" class="override-btn override-fail" title="Manually mark this field as failing"
+                        onclick="setFieldOverride('{{ field }}', 'mismatch')">&#10007;</button>
+                <button type="button" class="override-btn override-clear" title="Clear manual override"
+                        style="{{ '' if agg.manual_override else 'display:none' }}"
+                        onclick="clearFieldOverride('{{ field }}')">&#8635;</button>
+              </span>
+              <input type="hidden" id="override-input-{{ field }}" name="override_status_{{ field }}"
+                     value="{{ agg.status if agg.manual_override else '' }}">
+            </td>
+            <td>
+              {% if agg.status == "disagreement" %}
+                {% for v in agg["values"] %}<div>{{ v.value }}</div>{% endfor %}
+              {% elif agg.status == "not_found" %}
+                —
+              {% else %}
+                {{ agg.value or "—" }}
+              {% endif %}
+            </td>
+            <td>
+              {% if agg.status == "disagreement" %}
+                {% for v in agg["values"] %}<div>Photo {{ v.source_index + 1 }}</div>{% endfor %}
+              {% elif agg.status == "not_found" %}
+                —
+              {% else %}
+                Photo {{ agg.source_index + 1 }}
+              {% endif %}
+            </td>
+            <td>{{ agg.expected or "—" }}</td>
+          </tr>
+        {% endfor %}
+        <tr class="summary-row">
+          <td>Warning Heading Format</td>
+          <td colspan="4">
+            <span class="format-badge {% if verification.warning_caps_ok is none %}format-unknown{% elif verification.warning_caps_ok %}format-ok{% else %}format-bad{% endif %}">
+              ALL CAPS: {% if verification.warning_caps_ok is none %}unknown{% elif verification.warning_caps_ok %}✓{% else %}✗{% endif %}
+            </span>
+            <span class="format-badge {% if verification.warning_bold_ok is none %}format-unknown{% elif verification.warning_bold_ok %}format-ok{% else %}format-bad{% endif %}">
+              Bold: {% if verification.warning_bold_ok is none %}unknown{% elif verification.warning_bold_ok %}✓{% else %}✗{% endif %}
+              (auto-detected, verify visually)
             </span>
           </td>
-          <td>
-            {% if agg.status == "disagreement" %}
-              {% for v in agg["values"] %}<div>{{ v.value }}</div>{% endfor %}
-            {% elif agg.status == "not_found" %}
-              —
-            {% else %}
-              {{ agg.value or "—" }}
-            {% endif %}
-          </td>
-          <td>
-            {% if agg.status == "disagreement" %}
-              {% for v in agg["values"] %}<div>Photo {{ v.source_index + 1 }}</div>{% endfor %}
-            {% elif agg.status == "not_found" %}
-              —
-            {% else %}
-              Photo {{ agg.source_index + 1 }}
-            {% endif %}
-          </td>
-          <td>{{ agg.expected or "—" }}</td>
         </tr>
-      {% endfor %}
-      <tr class="summary-row">
-        <td>Warning Heading Format</td>
-        <td colspan="4">
-          <span class="format-badge {% if verification.warning_caps_ok is none %}format-unknown{% elif verification.warning_caps_ok %}format-ok{% else %}format-bad{% endif %}">
-            ALL CAPS: {% if verification.warning_caps_ok is none %}unknown{% elif verification.warning_caps_ok %}✓{% else %}✗{% endif %}
-          </span>
-          <span class="format-badge {% if verification.warning_bold_ok is none %}format-unknown{% elif verification.warning_bold_ok %}format-ok{% else %}format-bad{% endif %}">
-            Bold: {% if verification.warning_bold_ok is none %}unknown{% elif verification.warning_bold_ok %}✓{% else %}✗{% endif %}
-            (auto-detected, verify visually)
-          </span>
-        </td>
-      </tr>
-    </tbody>
-  </table>
+      </tbody>
+    </table>
 
-  {% if verification.photos %}
-    <form method="post" action="{{ url_for('verify.update_saved_result', verification_id=verification.id) }}" class="stacked-form">
+    {% if verification.photos %}
       {% for photo in verification.photos %}
         <details class="verify-item">
           <summary class="verify-item-summary">
@@ -118,12 +145,94 @@
           </div>
         </details>
       {% endfor %}
+    {% else %}
+      <p class="muted">This COLA application had no embedded label photos to check. You can still manually
+        pass or fail a field above using the &#10003;/&#10007; buttons.</p>
+    {% endif %}
 
-      <div class="form-actions">
-        <button type="submit" class="button">Save Corrections</button>
-      </div>
-    </form>
-  {% else %}
-    <p class="muted">This COLA application had no embedded label photos to check.</p>
-  {% endif %}
+    <div class="form-actions">
+      <button type="submit" class="button">Save Corrections</button>
+    </div>
+  </form>
+
+  <script>
+    const SAVE_PRODUCT_URL = "{{ url_for('verify.save_product') }}";
+    const APPLICATION_FIELDS = {{ application_fields|tojson }};
+
+    function showSaveProductMessage(text, success) {
+      const messageEl = document.getElementById('save-product-message');
+      if (!messageEl) return;
+      messageEl.textContent = text;
+      messageEl.className = 'save-product-message ' + (success ? 'save-product-success' : 'save-product-error');
+    }
+
+    function saveApplicationAsProduct() {
+      const nameEl = document.getElementById('new-product-name');
+      const name = nameEl ? nameEl.value.trim() : '';
+      if (!name) {
+        showSaveProductMessage('Enter a product name before saving.', false);
+        return;
+      }
+
+      const button = document.getElementById('save-product-button');
+      if (button) button.disabled = true;
+      showSaveProductMessage('Saving…', true);
+
+      const formData = new FormData();
+      formData.append('action', 'create');
+      formData.append('name', name);
+      formData.append('ajax', '1');
+      Object.keys(APPLICATION_FIELDS).forEach(function (field) {
+        formData.append(field, APPLICATION_FIELDS[field] || '');
+      });
+
+      // Submitted via fetch rather than a real form -- this page stays put
+      // (no navigation) regardless of the result; only the inline message
+      // next to the button updates.
+      fetch(SAVE_PRODUCT_URL, {method: 'POST', body: formData})
+        .then(function (response) { return response.json(); })
+        .then(function (result) {
+          showSaveProductMessage(result.message, result.success);
+        })
+        .catch(function () {
+          showSaveProductMessage('Something went wrong saving this product. Please try again.', false);
+        })
+        .finally(function () {
+          if (button) button.disabled = false;
+        });
+    }
+
+    const SAVED_DETAIL_STATUS_LABELS = {match: 'MATCH', mismatch: 'MISMATCH'};
+
+    function setFieldOverride(field, status) {
+      const input = document.getElementById('override-input-' + field);
+      const badge = document.getElementById('badge-' + field);
+      const row = document.getElementById('summary-row-' + field);
+      if (input) input.value = status;
+      if (badge) {
+        badge.className = 'badge badge-' + status;
+        badge.querySelector('.badge-text').textContent = SAVED_DETAIL_STATUS_LABELS[status];
+        badge.querySelector('.manual-tag').style.display = '';
+      }
+      if (row) row.className = 'summary-row status-' + status;
+      const cell = badge ? badge.closest('.status-cell') : null;
+      if (cell) cell.querySelector('.override-clear').style.display = '';
+    }
+
+    function clearFieldOverride(field) {
+      const input = document.getElementById('override-input-' + field);
+      const badge = document.getElementById('badge-' + field);
+      const row = document.getElementById('summary-row-' + field);
+      if (input) input.value = '';
+      if (badge) {
+        const status = badge.dataset.computedStatus;
+        badge.className = 'badge badge-' + status;
+        badge.querySelector('.badge-text').textContent = badge.dataset.computedText;
+        badge.querySelector('.manual-tag').style.display = 'none';
+        if (row) row.className = 'summary-row status-' + status;
+      }
+      const cell = badge ? badge.closest('.status-cell') : null;
+      if (cell) cell.querySelector('.override-clear').style.display = 'none';
+    }
+  </script>
 {% endblock %}

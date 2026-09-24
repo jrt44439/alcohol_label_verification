@@ -74,7 +74,13 @@ def _looks_like_field_heading(line: str) -> bool:
     return len(letters) >= 4 and all(c.isupper() for c in letters) and len(stripped) <= 80
 
 
-def extract_labeled_field(text: str, label_patterns: list[str], multiline: bool = False, max_lines: int = 4) -> str | None:
+def extract_labeled_field(
+    text: str,
+    label_patterns: list[str],
+    multiline: bool = False,
+    max_lines: int = 4,
+    stop_at_address_end: bool = False,
+) -> str | None:
     """Find a form-style labeled field and return its value.
 
     Handles both "Label: value" on one line and the label alone on its own
@@ -82,7 +88,11 @@ def extract_labeled_field(text: str, label_patterns: list[str], multiline: bool 
     from a fillable PDF form). ``multiline`` collects several following lines
     (e.g. a wrapped producer address) instead of just one; either way, capture
     stops at the next recognizable field heading so it never absorbs
-    unrelated content below.
+    unrelated content below. ``stop_at_address_end`` additionally stops
+    capture right after a line containing a zip/state/country -- only
+    appropriate for an address-shaped field (e.g. producer_info); a state
+    name can be an ordinary word elsewhere (e.g. "Kentucky Straight Bourbon
+    Whiskey" for class_type), so this must not be applied generically.
     """
     lines = text.splitlines()
     for pattern in label_patterns:
@@ -108,12 +118,23 @@ def extract_labeled_field(text: str, label_patterns: list[str], multiline: bool 
                     return value
                 continue
 
-            if after_for_check.strip(" \t:-.,"):
-                # Something other than trailing punctuation follows the match
-                # on the same line without a separator -- the pattern matched
-                # inside a sentence (e.g. "...at 45% ALC/VOL in 750 mL..."),
-                # not a real form label. Don't treat the rest as a value.
-                continue
+            trailing = after_for_check.strip(" \t:-.,")
+            if trailing:
+                trailing_letters = [c for c in trailing if c.isalpha()]
+                looks_like_more_heading = bool(trailing_letters) and all(c.isupper() for c in trailing_letters)
+                if not looks_like_more_heading:
+                    # Something other than trailing punctuation follows the
+                    # match on the same line without a separator, and it
+                    # reads like natural sentence text (e.g. "...at 45%
+                    # ALC/VOL in 750 mL...") rather than more heading words
+                    # -- the pattern matched inside a sentence, not a real
+                    # form label. Don't treat the rest as a value.
+                    continue
+                # Otherwise it's just more heading text in caps (e.g. "8.
+                # NAME AND ADDRESS OF APPLICANT AS SHOWN ON PERMIT OR
+                # BREWER'S NOTICE") -- fall through to capture the real
+                # value from the line(s) below instead of rejecting the
+                # match.
 
             # The label is essentially the whole line -- the filled-in value
             # is on the line(s) below, a common fillable-PDF-form layout.
@@ -142,7 +163,7 @@ def extract_labeled_field(text: str, label_patterns: list[str], multiline: bool 
                 if _looks_like_field_heading(follow):
                     break
                 captured.append(follow)
-                if multiline and ocr_field_extractors.looks_like_address_end(follow):
+                if stop_at_address_end and ocr_field_extractors.looks_like_address_end(follow):
                     # A zip code, state, or country is a strong signal this
                     # line ends the address -- stop here rather than
                     # continuing into whatever field comes next, even if it
@@ -203,7 +224,9 @@ def extract_all_fields_from_document(text: str) -> dict[str, str | None]:
     if net_contents:
         net_contents = ocr_field_extractors.strip_trailing_label_noise(net_contents)
 
-    producer_info = extract_labeled_field(text, LABELED_FIELD_PATTERNS["producer_info"], multiline=True)
+    producer_info = extract_labeled_field(
+        text, LABELED_FIELD_PATTERNS["producer_info"], multiline=True, stop_at_address_end=True
+    )
     if not producer_info:
         producer_info = ocr_field_extractors.extract_producer_info(text)
     if producer_info:

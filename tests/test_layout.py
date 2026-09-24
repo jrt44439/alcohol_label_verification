@@ -85,3 +85,27 @@ def test_cluster_lines_merges_across_different_blocks_and_paragraphs():
     }
     keys = cluster_lines(line_info, (1, 1, 1), max_lines=3)
     assert keys == [(1, 1, 1), (2, 1, 1)]
+
+
+def test_cluster_lines_chains_gradual_font_size_change():
+    # Each consecutive pair is within height_ratio of each other, even
+    # though the first and last individually are not (16/30 = 0.53, below
+    # the default 0.6 ratio) -- chaining against the previously included
+    # line (not always the original start line) still merges all three.
+    line_info = {
+        (1, 1, 1): {"text": "Big", "height": 30, "top": 0, "left": 0},
+        (1, 1, 2): {"text": "Medium", "height": 22, "top": 32, "left": 0},
+        (1, 1, 3): {"text": "Smaller", "height": 16, "top": 56, "left": 0},
+    }
+    keys = cluster_lines(line_info, (1, 1, 1), max_lines=3)
+    assert keys == [(1, 1, 1), (1, 1, 2), (1, 1, 3)]
+
+
+def test_cluster_lines_direction_backward_walks_upward():
+    line_info = {
+        (1, 1, 1): {"text": "Tagline", "height": 20, "top": 0, "left": 0},
+        (1, 1, 2): {"text": "BRAND", "height": 20, "top": 24, "left": 0},
+        (1, 1, 3): {"text": "small print", "height": 8, "top": 48, "left": 0},
+    }
+    keys = cluster_lines(line_info, (1, 1, 2), max_lines=3, direction=-1)
+    assert keys == [(1, 1, 1), (1, 1, 2)]
