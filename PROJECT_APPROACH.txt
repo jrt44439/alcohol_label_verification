@@ -1,0 +1,150 @@
+ALCOHOL LABEL VERIFICATION - APPROACH, TOOLS, AND ASSUMPTIONS
+================================================================
+
+OVERVIEW
+--------
+This application checks a printed alcohol bottle label, or multiple labels, against a set
+of known-correct reference values (brand name, class/type, alcohol
+content, net contents, producer/bottler/importer, country of origin, and
+the U.S. Government Health Warning). Reference values can come from a
+manually maintained product library, values typed in ad hoc, or a TTB
+COLA (Certificate of Label Approval) application uploaded as a PDF or
+Word document. All OCR and text extraction run locally -- no label photo
+or document ever leaves the machine running the app.
+
+
+APPROACH
+--------
+1. Local-first by design. The single biggest early decision was to use
+   Tesseract (a local OCR engine) instead of a cloud vision API. This
+   keeps label photos and reference documents private, avoids API calls,
+   and works offline -- at the cost of needing more manual
+   tuning of image preprocessing and text-extraction heuristics than a
+   commercial OCR API would require.
+
+2. Human-in-the-loop, not full automation. Because local OCR and
+   heuristic field extraction will sometimes misread or miss text, the
+   application never treats an automated result as final. Every extracted
+   field is shown next to its raw OCR text and is editable before a
+   comparison is finalized, and a manual pass/fail override is available
+   on the results table so a person can correct the system's judgment
+   without needing to alter the underlying extracted values.
+
+3. Iterative build order:
+   a. Core workflow first: upload a label photo, run OCR, extract the
+      seven mandatory fields with regex/keyword heuristics, compare
+      against a manually entered or saved reference, display per-field
+      match/mismatch.
+   b. Product library: persist reusable reference values (SQLite) so a
+      repeatedly verified product doesn't need re-entry every time.
+   c. Batch photo upload with auto-matching against the saved product
+      library, grouping multiple photos of the same product (e.g. front
+      and back) into one combined result.
+   d. COLA application ingestion: extract the same seven fields from an
+      uploaded PDF/Word application (including any label photos embedded
+      in it) and compare those against the photographed label, instead of
+      a manually maintained reference.
+   e. Saved/batch COLA review: process and persist multiple COLA
+      applications at once (values and match status only, no images),
+      reviewable and correctable afterward.
+   f. Extraction and matching hardening, driven by repeated real-world
+      testing: broadened field-comparison logic to tolerate OCR noise and
+      incomplete reference data (e.g. comparing class/type against TTB
+      broad categories -- Wine / Distilled Spirits / Malt Beverage --
+      rather than requiring an exact string match; matching producer/
+      address information on a handful of shared keywords, with U.S.
+      state abbreviations and full names normalized to the same value,
+      rather than requiring an exact address match); improved image
+      preprocessing (grayscale, upscaling, denoising, contrast
+      enhancement, deskewing) after finding that hard binarization was
+      fusing and fragmenting OCR'd letters.
+   g. Packaging for distribution: a standalone Windows build (PyInstaller,
+      bundling Tesseract so the machine running it needs nothing
+      preinstalled) for local/offline use, and a Docker-based server build
+      (Fly.io or Render) for hosted use, as two separate deployment paths
+      for two different use cases.
+
+4. Testing throughout. Each extraction and comparison heuristic was
+   covered by unit tests (pytest) as it was built or changed, so
+   later refinements could be made with confidence that earlier behavior
+   wasn't silently broken. I also tested each iteration and change 
+   manually to determine if the application was working as intended.
+
+
+TOOLS USED
+----------
+Backend / core application:
+  - Python 3.12
+  - Flask (web framework, application-factory pattern with blueprints)
+  - SQLite (stdlib sqlite3) for the product library and saved COLA
+    verification results
+  - Tesseract OCR + pytesseract (local, offline text extraction)
+  - OpenCV (opencv-python-headless) and Pillow (image loading/
+    preprocessing: grayscale, upscaling, denoising, CLAHE contrast
+    enhancement, deskewing)
+  - rapidfuzz (fuzzy text comparison/scoring for field matching)
+  - pypdf + cryptography (PDF text and embedded-image extraction,
+    including password/encrypted PDFs)
+  - python-docx (Word document text and embedded-image extraction)
+
+Testing:
+  - pytest (unit and route-level tests)
+
+Packaging / deployment:
+  - PyInstaller (standalone Windows .exe build)
+  - waitress (production-grade WSGI server, used by both the desktop
+    build and the server/Docker build)
+  - PowerShell Authenticode cmdlets (self-signed code signing for the
+    Windows build)
+  - Docker (containerized server build)
+  - Fly.io / Render (container hosting, with a persistent volume/disk for
+    the database and temporary uploads)
+
+Version control / development:
+  - Git and GitHub
+  - Claude Code (AI pair-programming assistant), used throughout for
+    implementation, debugging, iterative refinement of extraction and
+    matching logic based on test results, and this packaging/deployment
+    setup
+
+
+ASSUMPTIONS MADE
+-----------------
+  - Reference documents (COLA applications, product spec sheets) have a
+    real, extractable text layer. A scanned or photographed document with
+    no embedded text isn't supported -- its fields must be entered
+    manually instead.
+  - Label photos are reasonably legible. OCR accuracy depends on photo
+    quality (lighting, focus, angle), which is exactly why every result
+    is reviewable/editable rather than trusted outright.
+  - The Government Health Warning wording is fixed and federally
+    standardized (27 CFR 16.21) and does not vary per product, so it is
+    checked against one constant, correct value rather than stored per
+    product.
+  - Alcohol content and net contents are always required to be readable
+    on the label photo itself, even if a reference source doesn't state
+    them (a photo missing either is flagged, regardless of the
+    reference). Country of origin is treated as conditional -- required
+    only when the product is an import.
+  - A COLA application's "Type of Product" selection (Wine / Distilled
+    Spirits / Malt Beverage) represents a broad category that a more
+    specific label designation (e.g. "Bourbon Whiskey", "Chardonnay")
+    should be checked against by category, not by exact text match.
+  - Producer/bottler/importer matching should be broad rather than exact:
+    since a label's fine print or an OCR read may be incomplete or noisy,
+    matching is based on whether a handful of significant keywords (name,
+    city, state) agree, with state abbreviations and full names treated
+    as equivalent, rather than requiring a full, exact address match.
+  - Single-user / trusted-environment use. There is no authentication,
+    authorization, or per-user data isolation -- anyone with access to
+    the running app (or its saved data) can see and edit everything in
+    it. This was treated as acceptable for a personal/internal
+    compliance-checking tool, not a multi-tenant public service.
+  - English-language labels and documents. Only English Tesseract
+    trained data is used/bundled.
+  - Low-concurrency, single-instance use. SQLite and local on-disk
+    storage for uploaded images were treated as sufficient; the app
+    was not built for high-concurrency, multi-instance production load.
+  - Windows as the primary target for the standalone desktop build
+    (matching the development machine and the Tesseract distribution
+    used); the Docker/server build is platform-agnostic Linux-based.
